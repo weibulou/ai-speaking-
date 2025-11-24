@@ -1,0 +1,7 @@
+{
+  "name": "DebateMaster AI",
+  "description": "智能英语演讲与辩论训练平台，提供逻辑分析、虚拟对手对抗及个性化反馈。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
