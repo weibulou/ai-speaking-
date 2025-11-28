@@ -12,7 +12,9 @@ export const translations = {
     nav: {
       dashboard: '数据看板',
       speech: '演讲分析',
+      visual: '视觉体态诊断',
       debate: '辩论竞技场',
+      learning: '名家讲坛',
       resources: '训练资源',
     },
     dashboard: {
@@ -47,6 +49,19 @@ export const translations = {
       conclusion: '结语',
       noResult: '分析结果将显示在此处',
     },
+    visual: {
+      title: '3D 视觉体态诊断',
+      subtitle: '通过计算机视觉分析您的面部表情、眼神接触及肢体语言，助您提升舞台表现力。',
+      startCamera: '开启摄像头',
+      analyzeSnapshot: '拍摄并分析',
+      analyzing: 'AI 视觉分析中...',
+      instruction: '请正对摄像头，保持上半身在画面中，进行一段自然的演讲。',
+      resultTitle: '体态与表情诊断',
+      expression: '面部表情',
+      posture: '肢体仪态',
+      eyeContact: '眼神交流',
+      suggestions: 'AI 改进建议'
+    },
     debate: {
       title: '虚拟辩论竞技场',
       subtitle: '选择辩题与AI进行高强度逻辑对抗。',
@@ -60,6 +75,12 @@ export const translations = {
       endSession: '结束对局',
       typeArg: '输入你的论点...',
       welcomeMsg: '欢迎来到辩论场。辩题是"{topic}"。你代表{side}。请开始你的立论。',
+    },
+    learning: {
+      title: '名家讲坛',
+      subtitle: '精选 Bilibili 优质演讲与辩论实录，向顶尖辩手学习。',
+      watch: '观看视频',
+      source: '来源: Bilibili'
     },
     resources: {
       title: '个性化训练资源',
@@ -89,7 +110,9 @@ export const translations = {
     nav: {
       dashboard: 'Dashboard',
       speech: 'Speech Analysis',
+      visual: 'Visual Diagnosis',
       debate: 'Debate Arena',
+      learning: 'Learning Center',
       resources: 'Resources',
     },
     dashboard: {
@@ -124,6 +147,19 @@ export const translations = {
       conclusion: 'Conclusion',
       noResult: 'Analysis results will appear here',
     },
+    visual: {
+      title: '3D Visual Diagnosis',
+      subtitle: 'Computer vision analysis of your facial expressions, eye contact, and body language.',
+      startCamera: 'Start Camera',
+      analyzeSnapshot: 'Capture & Analyze',
+      analyzing: 'AI Analyzing...',
+      instruction: 'Face the camera, keep your upper body visible, and speak naturally.',
+      resultTitle: 'Visual Diagnosis Report',
+      expression: 'Facial Expression',
+      posture: 'Posture',
+      eyeContact: 'Eye Contact',
+      suggestions: 'AI Suggestions'
+    },
     debate: {
       title: 'Virtual Debate Arena',
       subtitle: 'Choose a topic and challenge the AI opponent.',
@@ -137,6 +173,12 @@ export const translations = {
       endSession: 'End Session',
       typeArg: 'Type your argument...',
       welcomeMsg: 'Welcome. The topic is "{topic}". You are speaking for the {side}. Please present your opening statement.',
+    },
+    learning: {
+      title: 'Learning Center',
+      subtitle: 'Curated speeches and debates from top performers on Bilibili.',
+      watch: 'Watch Video',
+      source: 'Source: Bilibili'
     },
     resources: {
       title: 'Training Resources',

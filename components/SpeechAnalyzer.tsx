@@ -1,14 +1,16 @@
+
 import React, { useState, useRef } from 'react';
 import { Mic, Square, Play, RotateCcw, CheckCircle, AlertTriangle, FileText, Sparkles } from 'lucide-react';
 import { analyzeSpeechContent, generateRandomTopic } from '../services/geminiService';
-import { AnalysisResult, Language } from '../types';
+import { AnalysisResult, Language, HistoryItem } from '../types';
 import { translations } from '../locales';
 
 interface SpeechAnalyzerProps {
   lang: Language;
+  onSave: (item: HistoryItem) => void;
 }
 
-const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
+const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang, onSave }) => {
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -58,6 +60,18 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
     try {
       const data = await analyzeSpeechContent(text);
       setResult(data);
+      
+      // Save to history
+      const historyItem: HistoryItem = {
+          id: Date.now().toString(),
+          type: 'speech',
+          date: Date.now(),
+          score: data.score,
+          summary: data.summary,
+          details: data
+      };
+      onSave(historyItem);
+
     } catch (err) {
       console.error(err);
       alert("Analysis failed. Please try again.");

@@ -1,17 +1,28 @@
-import React, { useState } from 'react';
-import { LayoutDashboard, Mic, MessageSquare, Library, Menu, X, Languages } from 'lucide-react';
+
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Mic, MessageSquare, Library, Menu, X, Languages, Scan, Video } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import SpeechAnalyzer from './components/SpeechAnalyzer';
+import VisualAnalyzer from './components/VisualAnalyzer';
 import DebateArena from './components/DebateArena';
+import LearningCenter from './components/LearningCenter';
 import Resources from './components/Resources';
 import LandingPage from './components/LandingPage';
-import { AppView, Language } from './types';
+import { AppView, Language, HistoryItem } from './types';
 import { translations } from './locales';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>(AppView.LANDING);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [lang, setLang] = useState<Language>('zh');
+  
+  // Global History State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  // Function to add new activity
+  const addHistoryItem = (item: HistoryItem) => {
+    setHistory(prev => [item, ...prev]);
+  };
 
   const t = translations[lang];
 
@@ -51,10 +62,12 @@ function App() {
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">{t.common.appName}</h1>
         </div>
 
-        <nav className="space-y-2 flex-1">
+        <nav className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
           <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label={t.nav.dashboard} />
           <NavItem view={AppView.SPEECH_ANALYSIS} icon={Mic} label={t.nav.speech} />
+          <NavItem view={AppView.VISUAL_ANALYSIS} icon={Scan} label={t.nav.visual} />
           <NavItem view={AppView.DEBATE_SIMULATOR} icon={MessageSquare} label={t.nav.debate} />
+          <NavItem view={AppView.LEARNING_CENTER} icon={Video} label={t.nav.learning} />
           <NavItem view={AppView.RESOURCES} icon={Library} label={t.nav.resources} />
         </nav>
 
@@ -101,10 +114,12 @@ function App() {
 
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 bg-slate-50 z-10 pt-20 px-6 space-y-4 animate-in slide-in-from-top-10 duration-200">
+        <div className="md:hidden fixed inset-0 bg-slate-50 z-10 pt-20 px-6 space-y-4 animate-in slide-in-from-top-10 duration-200 overflow-y-auto">
           <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label={t.nav.dashboard} />
           <NavItem view={AppView.SPEECH_ANALYSIS} icon={Mic} label={t.nav.speech} />
+          <NavItem view={AppView.VISUAL_ANALYSIS} icon={Scan} label={t.nav.visual} />
           <NavItem view={AppView.DEBATE_SIMULATOR} icon={MessageSquare} label={t.nav.debate} />
+          <NavItem view={AppView.LEARNING_CENTER} icon={Video} label={t.nav.learning} />
           <NavItem view={AppView.RESOURCES} icon={Library} label={t.nav.resources} />
         </div>
       )}
@@ -112,9 +127,11 @@ function App() {
       {/* Main Content Area */}
       <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-x-hidden">
         <div className="max-w-7xl mx-auto">
-          {currentView === AppView.DASHBOARD && <Dashboard lang={lang} />}
-          {currentView === AppView.SPEECH_ANALYSIS && <SpeechAnalyzer lang={lang} />}
+          {currentView === AppView.DASHBOARD && <Dashboard lang={lang} history={history} />}
+          {currentView === AppView.SPEECH_ANALYSIS && <SpeechAnalyzer lang={lang} onSave={addHistoryItem} />}
+          {currentView === AppView.VISUAL_ANALYSIS && <VisualAnalyzer lang={lang} onSave={addHistoryItem} />}
           {currentView === AppView.DEBATE_SIMULATOR && <DebateArena lang={lang} />}
+          {currentView === AppView.LEARNING_CENTER && <LearningCenter lang={lang} />}
           {currentView === AppView.RESOURCES && <Resources lang={lang} />}
         </div>
       </main>
