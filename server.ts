@@ -71,22 +71,25 @@ async function startServer() {
   app.post("/api/db/save-history", async (req, res) => {
     if (!db) return res.status(500).json({ error: "Database not initialized" });
     const { uid, historyItem } = req.body;
+    console.log(`Attempting to save history for user: ${uid}`);
     try {
       const historyRef = db.collection('users').doc(uid).collection('history');
       const docRef = await historyRef.add({
         ...historyItem,
         serverTimestamp: FieldValue.serverTimestamp()
       });
+      console.log(`Successfully saved history with ID: ${docRef.id}`);
       res.json({ id: docRef.id });
     } catch (error: any) {
       console.error("DB Save History Error:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message, code: error.code });
     }
   });
 
   app.post("/api/db/update-stats", async (req, res) => {
     if (!db) return res.status(500).json({ error: "Database not initialized" });
     const { uid, stats } = req.body;
+    console.log(`Attempting to update stats for user: ${uid}`);
     try {
       const userRef = db.collection('users').doc(uid);
       
@@ -104,10 +107,11 @@ async function startServer() {
         ...updateData,
         updatedAt: new Date().toISOString()
       });
+      console.log(`Successfully updated stats for user: ${uid}`);
       res.json({ success: true });
     } catch (error: any) {
       console.error("DB Update Stats Error:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message, code: error.code });
     }
   });
 

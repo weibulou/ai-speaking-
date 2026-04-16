@@ -57,6 +57,11 @@ service cloud.firestore {
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
           (request.auth.token.email == "2969403672@qq.com" && request.auth.token.email_verified == true));
     }
+
+    // Allow server-side admin SDK to bypass (though it should by default)
+    // If it's hitting rules, we might need to allow based on some criteria
+    // But usually, Admin SDK bypasses rules. 
+    // The error might be because the client-side fallback is triggering and failing.
     
     function isValidEmail(email) {
       return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
