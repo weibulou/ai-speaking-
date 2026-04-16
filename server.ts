@@ -71,7 +71,7 @@ async function startServer() {
   app.post("/api/db/save-history", async (req, res) => {
     if (!db) return res.status(500).json({ error: "Database not initialized" });
     const { uid, historyItem } = req.body;
-    console.log(`Attempting to save history for user: ${uid}`);
+    console.log(`Attempting to save history for user: ${uid} in project ${db.projectId}`);
     try {
       const historyRef = db.collection('users').doc(uid).collection('history');
       const docRef = await historyRef.add({
@@ -82,14 +82,18 @@ async function startServer() {
       res.json({ id: docRef.id });
     } catch (error: any) {
       console.error("DB Save History Error:", error);
-      res.status(500).json({ error: error.message, code: error.code });
+      res.status(500).json({ 
+        error: error.message, 
+        code: error.code,
+        details: "This error often occurs if the project configuration is stale. Try re-running 'Set up Firebase' if you remixed this app."
+      });
     }
   });
 
   app.post("/api/db/update-stats", async (req, res) => {
     if (!db) return res.status(500).json({ error: "Database not initialized" });
     const { uid, stats } = req.body;
-    console.log(`Attempting to update stats for user: ${uid}`);
+    console.log(`Attempting to update stats for user: ${uid} in project ${db.projectId}`);
     try {
       const userRef = db.collection('users').doc(uid);
       
@@ -103,15 +107,21 @@ async function startServer() {
         }
       }
 
-      await userRef.update({
+      // Use set with merge: true to handle missing docs
+      await userRef.set({
         ...updateData,
         updatedAt: new Date().toISOString()
-      });
-      console.log(`Successfully updated stats for user: ${uid}`);
+      }, { merge: true });
+
+      console.log(`Successfully set/updated stats for user: ${uid}`);
       res.json({ success: true });
     } catch (error: any) {
       console.error("DB Update Stats Error:", error);
-      res.status(500).json({ error: error.message, code: error.code });
+      res.status(500).json({ 
+        error: error.message, 
+        code: error.code,
+        details: "This error often occurs if the project configuration is stale. Try re-running 'Set up Firebase' if you remixed this app."
+      });
     }
   });
 
@@ -264,14 +274,20 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    // In Express v5, we must use *all to catch all routes for SPA
+    app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`>>> Server is successfully running and listening on 0.0.0.0:${PORT} <<<`);
+    console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
   });
 }
 
-startServer();
+console.log("Initialization complete, starting server...");
+startServer().catch(err => {
+  console.error("CRITICAL SERVER ERROR:", err);
+  process.exit(1);
+});

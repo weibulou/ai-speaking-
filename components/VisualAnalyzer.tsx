@@ -365,15 +365,26 @@ const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang }) => {
 
   const startCamera = async () => {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true });
+        // Try with HD first
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                audio: true 
+            });
+        } catch (e) {
+            console.warn("HD camera failed, falling back to default", e);
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        }
+
         if (videoRef.current) {
             videoRef.current.srcObject = stream;
         }
         await initAudioAnalysis(stream);
         setIsCameraActive(true);
     } catch (err) {
-        console.error(err);
-        alert("Unable to access camera or microphone.");
+        console.error("Critical camera error:", err);
+        alert("无法开启摄像头或麦克风。请检查权限设置并确保没有其他应用占用摄像头。");
     }
   };
 

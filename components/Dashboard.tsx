@@ -49,70 +49,44 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
     const avgScore = speechItems.length > 0 ? (totalScore / speechItems.length).toFixed(1) : '0.0';
 
     // Skill Radar Data (Aggregating from speech details)
-    // We start with base values so the chart isn't empty initially
     let radarStats = {
-      logic: 60,
-      rhetoric: 60,
-      evidence: 60,
-      fluency: 60,
-      structure: 60,
+      logic: 0,
+      rhetoric: 0,
+      evidence: 0,
+      fluency: 0,
+      structure: 0,
       count: 0
     };
 
     speechItems.forEach(item => {
-        if (item.details) {
+        if (item.details && typeof item.details === 'object') {
             radarStats.logic += item.details.logicScore || 0;
-            radarStats.rhetoric += item.details.argumentScore || 0; // Mapping argument to rhetoric for now
-            radarStats.evidence += item.details.argumentScore || 0;
+            radarStats.rhetoric += item.details.argumentScore || 0;
+            radarStats.evidence += item.details.argumentScore || 0; // Using argument score for evidence too
             radarStats.fluency += item.details.fluencyScore || 0;
-            radarStats.structure += item.details.logicScore || 0;
+            radarStats.structure += item.details.logicScore || 0; // Using logic score for structure too
             radarStats.count++;
         }
     });
 
-    const divisor = radarStats.count || 1; // Avoid division by zero, but if 0, we just show base 60
-    // If count is > 0, we subtract the base 60*count from sum? No, simpler logic:
-    // If we have data, recalculate. 
-    // Let's just average the raw scores from history if available, else show default mock.
-    
     let radarData;
-    if (progress?.skillRadar) {
+    if (radarStats.count > 0) {
         radarData = [
-            { subject: 'Logic', A: progress.skillRadar.logic, fullMark: 100 },
-            { subject: 'Rhetoric', A: progress.skillRadar.rhetoric, fullMark: 100 },
-            { subject: 'Evidence', A: progress.skillRadar.evidence, fullMark: 100 },
-            { subject: 'Fluency', A: progress.skillRadar.fluency, fullMark: 100 },
-            { subject: 'Structure', A: progress.skillRadar.structure, fullMark: 100 },
+            { subject: lang === 'zh' ? '逻辑' : 'Logic', A: Math.round(radarStats.logic / radarStats.count), fullMark: 100 },
+            { subject: lang === 'zh' ? '修辞' : 'Rhetoric', A: Math.round(radarStats.rhetoric / radarStats.count), fullMark: 100 },
+            { subject: lang === 'zh' ? '论证' : 'Evidence', A: Math.round(radarStats.evidence / radarStats.count), fullMark: 100 },
+            { subject: lang === 'zh' ? '流畅' : 'Fluency', A: Math.round(radarStats.fluency / radarStats.count), fullMark: 100 },
+            { subject: lang === 'zh' ? '结构' : 'Structure', A: Math.round(radarStats.structure / radarStats.count), fullMark: 100 },
         ];
-    } else if (radarStats.count > 0) {
-        // Reset base to 0 for calculation
-         radarStats = {
-          logic: 0,
-          rhetoric: 0,
-          evidence: 0,
-          fluency: 0,
-          structure: 0,
-          count: 0
-        };
-        speechItems.forEach(item => {
-            if (item.details) {
-                radarStats.logic += item.details.logicScore || 0;
-                radarStats.rhetoric += item.details.argumentScore || 0; 
-                radarStats.evidence += item.details.argumentScore || 0;
-                radarStats.fluency += item.details.fluencyScore || 0;
-                radarStats.structure += item.details.logicScore || 0;
-                radarStats.count++;
-            }
-        });
-        radarData = [
-            { subject: 'Logic', A: Math.round(radarStats.logic / radarStats.count), fullMark: 100 },
-            { subject: 'Rhetoric', A: Math.round(radarStats.rhetoric / radarStats.count), fullMark: 100 },
-            { subject: 'Evidence', A: Math.round(radarStats.evidence / radarStats.count), fullMark: 100 },
-            { subject: 'Fluency', A: Math.round(radarStats.fluency / radarStats.count), fullMark: 100 },
-            { subject: 'Structure', A: Math.round(radarStats.structure / radarStats.count), fullMark: 100 },
-        ];
+    } else if (progress?.skillRadar && Array.isArray(progress.skillRadar)) {
+        // Fallback to progress data if no history yet
+        radarData = progress.skillRadar.map(s => ({
+            subject: s.subject,
+            A: s.A,
+            fullMark: s.fullMark || 100
+        }));
     } else {
-        // Default Mock Data if no history
+        // Default Mock Data if absolutely nothing
         radarData = [
             { subject: 'Logic', A: 65, fullMark: 100 },
             { subject: 'Rhetoric', A: 70, fullMark: 100 },
