@@ -1,7 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-import { Trophy, TrendingUp, Activity, BookOpen, Mic, Scan } from 'lucide-react';
+import { Trophy, TrendingUp, Activity, BookOpen, Mic, Scan, RefreshCw, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Language, HistoryItem } from '../types';
 import { translations } from '../locales';
 import { useAuth } from '../App';
@@ -12,8 +12,31 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
-  const { progress } = useAuth();
+  const { user, progress } = useAuth();
   const t = translations[lang].dashboard;
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [showApiTest, setShowApiTest] = useState(true);
+
+  const isAdmin = user?.email === "2969403672@qq.com";
+
+  const testApi = async () => {
+    setIsTestingApi(true);
+    setApiTestResult(null);
+    try {
+      const res = await fetch("/api/test-api");
+      const data = await res.json();
+      if (data.success) {
+        setApiTestResult({ success: true, message: "API 调用成功！模型响应正常。" });
+      } else {
+        setApiTestResult({ success: false, message: `API 调用失败: ${data.error}` });
+      }
+    } catch (err) {
+      setApiTestResult({ success: false, message: "无法连接到后端服务器进行测试。" });
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
 
   // Calculate Metrics based on History
   const metrics = useMemo(() => {
@@ -124,6 +147,51 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
 
   return (
     <div className="space-y-6 fade-in pb-8">
+      {/* Admin API Test Card */}
+      {isAdmin && (
+        <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg border border-slate-800 mb-2 overflow-hidden transition-all duration-300">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <Activity size={20} className="text-indigo-400" />
+              API 连通性检查 (管理员专用)
+            </h3>
+            <button 
+              onClick={() => setShowApiTest(!showApiTest)}
+              className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-slate-400 hover:text-white"
+              title={showApiTest ? "隐藏面板" : "展开面板"}
+            >
+              {showApiTest ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+          
+          {showApiTest && (
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-4 animate-in slide-in-from-top-2 duration-300">
+              <div>
+                <p className="text-slate-400 text-sm">
+                  点击下方按钮测试当前配置的 AI 模型是否能正常响应。
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {apiTestResult && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${apiTestResult.success ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                    {apiTestResult.success ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                    {apiTestResult.message}
+                  </div>
+                )}
+                <button 
+                  onClick={testApi}
+                  disabled={isTestingApi}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 rounded-xl transition-all font-medium text-sm shadow-lg shadow-indigo-500/20"
+                >
+                  <RefreshCw size={18} className={isTestingApi ? 'animate-spin' : ''} />
+                  {isTestingApi ? '测试中...' : '立即测试 API'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">

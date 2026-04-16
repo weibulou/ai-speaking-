@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { LayoutDashboard, Mic, MessageSquare, Library, Menu, X, Languages, Scan, Video, LogIn, LogOut } from 'lucide-react';
+import { LayoutDashboard, Mic, MessageSquare, Library, Menu, X, Languages, Scan, Video, LogIn, LogOut, AlertTriangle } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import SpeechAnalyzer from './components/SpeechAnalyzer';
 import VisualAnalyzer from './components/VisualAnalyzer';

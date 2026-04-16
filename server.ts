@@ -5,7 +5,8 @@ import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import cors from "cors";
-import admin from "firebase-admin";
+import { initializeApp, getApps, getApp } from "firebase-admin/app";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 
 console.log("Starting DebateMaster AI Server...");
@@ -14,17 +15,26 @@ dotenv.config();
 
 // Initialize Firebase Admin
 const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+let db: any = null;
+
 if (fs.existsSync(configPath)) {
   const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
-  console.log("Firebase Admin initialized with project:", firebaseConfig.projectId);
+  
+  const app = getApps().length === 0 
+    ? initializeApp({ projectId: firebaseConfig.projectId })
+    : getApp();
+  
+  // Use the specific database ID from the config
+  if (firebaseConfig.firestoreDatabaseId) {
+    db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    console.log("Firebase Admin initialized with project:", firebaseConfig.projectId, "and database:", firebaseConfig.firestoreDatabaseId);
+  } else {
+    db = getFirestore(app);
+    console.log("Firebase Admin initialized with project:", firebaseConfig.projectId, "(default database)");
+  }
 } else {
   console.warn("firebase-applet-config.json not found. Firebase Admin not initialized.");
 }
-
-const db = admin.apps.length ? admin.firestore() : null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,7 +75,7 @@ async function startServer() {
       const historyRef = db.collection('users').doc(uid).collection('history');
       const docRef = await historyRef.add({
         ...historyItem,
-        serverTimestamp: admin.firestore.FieldValue.serverTimestamp()
+        serverTimestamp: FieldValue.serverTimestamp()
       });
       res.json({ id: docRef.id });
     } catch (error: any) {
@@ -84,7 +94,7 @@ async function startServer() {
       const updateData: any = {};
       for (const [key, value] of Object.entries(stats)) {
         if (typeof value === 'object' && value !== null && (value as any)._type === 'increment') {
-          updateData[key] = admin.firestore.FieldValue.increment((value as any).value);
+          updateData[key] = FieldValue.increment((value as any).value);
         } else {
           updateData[key] = value;
         }
@@ -108,12 +118,35 @@ async function startServer() {
       const colRef = db.collection(colName);
       const docRef = await colRef.add({
         ...data,
-        serverTimestamp: admin.firestore.FieldValue.serverTimestamp()
+        serverTimestamp: FieldValue.serverTimestamp()
       });
       res.json({ id: docRef.id });
     } catch (error: any) {
       console.error(`DB Save Doc (${colName}) Error:`, error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/test-api", async (req, res) => {
+    try {
+      console.log("Testing API connection with model:", process.env.AI_MODEL);
+      const response = await openai.chat.completions.create({
+        model: process.env.AI_MODEL || "gpt-4o",
+        messages: [{ role: "user", content: "Hello, this is a test message to verify API connectivity." }],
+      });
+      res.json({ 
+        success: true, 
+        message: "API connection successful!",
+        response: response.choices[0].message.content,
+        modelUsed: response.model
+      });
+    } catch (error: any) {
+      console.error("API Test Failed:", error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        details: error.response?.data || "No additional details"
+      });
     }
   });
 
@@ -127,6 +160,7 @@ async function startServer() {
 
   app.post("/api/ai/analyze-speech", async (req, res) => {
     const { text, systemInstruction } = req.body;
+    console.log(`Analyzing speech with model: ${process.env.AI_MODEL || "gpt-4o"}`);
     try {
       const response = await openai.chat.completions.create({
         model: process.env.AI_MODEL || "gpt-4o",
