@@ -3,18 +3,23 @@ import { Send, User, Bot, Clock, ArrowRight, Swords } from 'lucide-react';
 import { createDebateChat } from '../services/geminiService';
 import { Message, Language } from '../types';
 import { translations } from '../locales';
+import { useAuth } from '../App';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 
 interface DebateArenaProps {
   lang: Language;
 }
 
 const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
+  const { user } = useAuth();
   const [topic, setTopic] = useState('');
   const [side, setSide] = useState<'proposition' | 'opposition'>('proposition');
   const [isStarted, setIsStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const t = translations[lang].debate;
@@ -34,25 +39,99 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
     scrollToBottom();
   }, [messages]);
 
-  const handleStart = () => {
-    if (!topic) return;
+  const handleStart = async () => {
+    if (!topic || !user) return;
+    
+    const newSessionId = Date.now().toString();
+    setSessionId(newSessionId);
     setIsStarted(true);
+    
     // Initialize Gemini Chat
     chatRef.current = createDebateChat(topic, side);
     
     // Initial welcome message from system/judge context
     const welcomeMsg = t.welcomeMsg.replace('{topic}', topic).replace('{side}', side);
 
-    setMessages([{
+    const initialMsg: Message = {
       id: '0',
       role: 'model',
       text: welcomeMsg,
       timestamp: Date.now()
-    }]);
+    };
+
+    setMessages([initialMsg]);
+
+    // Save initial message to Firestore
+    try {
+      await fetch("/api/db/save-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: 'debate_sessions',
+          data: {
+            sessionId: newSessionId,
+            role: 'model',
+            text: welcomeMsg,
+            timestamp: initialMsg.timestamp,
+            uid: user.uid
+          }
+        })
+      });
+
+      // Update user stats
+      await fetch("/api/db/update-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          stats: { totalExercises: { _type: 'increment', value: 1 } }
+        })
+      });
+
+      // Add to history
+      await fetch("/api/db/save-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid: user.uid,
+          historyItem: {
+            uid: user.uid,
+            type: 'debate',
+            date: initialMsg.timestamp,
+            summary: `Debate: ${topic}`,
+            details: { topic, side, sessionId: newSessionId }
+          }
+        })
+      });
+    } catch (error) {
+      console.error("Database proxy failed:", error);
+      // Fallback
+      try {
+        await addDoc(collection(db, 'debate_sessions'), {
+          sessionId: newSessionId,
+          role: 'model',
+          text: welcomeMsg,
+          timestamp: initialMsg.timestamp,
+          uid: user.uid
+        });
+        await updateDoc(doc(db, 'users', user.uid), {
+          totalExercises: increment(1)
+        });
+        await addDoc(collection(db, `users/${user.uid}/history`), {
+          uid: user.uid,
+          type: 'debate',
+          date: initialMsg.timestamp,
+          summary: `Debate: ${topic}`,
+          details: { topic, side, sessionId: newSessionId }
+        });
+      } catch (firestoreErr) {
+        handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
+      }
+    }
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !chatRef.current) return;
+    if (!input.trim() || !chatRef.current || !user || !sessionId) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -65,18 +144,50 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
     setInput('');
     setIsTyping(true);
 
+    // Save user message to Firestore
+    try {
+      await fetch("/api/db/save-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collection: 'debate_sessions',
+          data: {
+            sessionId,
+            role: 'user',
+            text: userMsg.text,
+            timestamp: userMsg.timestamp,
+            uid: user.uid
+          }
+        })
+      });
+    } catch (error) {
+      console.error("Database proxy failed:", error);
+      try {
+        await addDoc(collection(db, 'debate_sessions'), {
+          sessionId,
+          role: 'user',
+          text: userMsg.text,
+          timestamp: userMsg.timestamp,
+          uid: user.uid
+        });
+      } catch (firestoreErr) {
+        handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
+      }
+    }
+
     try {
       const result = await chatRef.current.sendMessageStream(userMsg.text);
       
       let fullText = '';
       const botMsgId = (Date.now() + 1).toString();
+      const botTimestamp = Date.now();
       
       // Add placeholder for bot message
       setMessages(prev => [...prev, {
         id: botMsgId,
         role: 'model',
         text: '',
-        timestamp: Date.now()
+        timestamp: botTimestamp
       }]);
 
       for await (const chunk of result) {
@@ -88,8 +199,41 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
           msg.id === botMsgId ? { ...msg, text: fullText } : msg
         ));
       }
+
+      // Save bot message to Firestore after streaming completes
+      try {
+        await fetch("/api/db/save-doc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            collection: 'debate_sessions',
+            data: {
+              sessionId,
+              role: 'model',
+              text: fullText,
+              timestamp: botTimestamp,
+              uid: user.uid
+            }
+          })
+        });
+      } catch (error) {
+        console.error("Database proxy failed:", error);
+        try {
+          await addDoc(collection(db, 'debate_sessions'), {
+            sessionId,
+            role: 'model',
+            text: fullText,
+            timestamp: botTimestamp,
+            uid: user.uid
+          });
+        } catch (firestoreErr) {
+          handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
+        }
+      }
+
     } catch (error) {
       console.error("Debate error", error);
+      handleFirestoreError(error, OperationType.WRITE, 'debate_sessions');
     } finally {
       setIsTyping(false);
     }

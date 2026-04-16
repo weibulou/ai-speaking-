@@ -4,13 +4,16 @@ import { Mic, Square, Play, RotateCcw, CheckCircle, AlertTriangle, FileText, Spa
 import { analyzeSpeechContent, generateRandomTopic } from '../services/geminiService';
 import { AnalysisResult, Language, HistoryItem } from '../types';
 import { translations } from '../locales';
+import { useAuth } from '../App';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, addDoc, doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 
 interface SpeechAnalyzerProps {
   lang: Language;
-  onSave: (item: HistoryItem) => void;
 }
 
-const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang, onSave }) => {
+const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
+  const { user, progress } = useAuth();
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -55,26 +58,68 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang, onSave }) => {
   };
 
   const handleAnalyze = async () => {
-    if (!text.trim()) return;
+    if (!text.trim() || !user) return;
     setIsAnalyzing(true);
     try {
       const data = await analyzeSpeechContent(text);
       setResult(data);
       
-      // Save to history
-      const historyItem: HistoryItem = {
-          id: Date.now().toString(),
-          type: 'speech',
-          date: Date.now(),
-          score: data.score,
-          summary: data.summary,
-          details: data
+      // Save to history in Firestore
+      const historyPath = `users/${user.uid}/history`;
+      const historyItem: Omit<HistoryItem, 'id'> = {
+        uid: user.uid,
+        type: 'speech',
+        date: Date.now(),
+        score: data.score,
+        summary: data.summary,
+        details: data
       };
-      onSave(historyItem);
+      
+      try {
+        // Use server-side proxy for database writes to avoid client-side network issues
+        await fetch("/api/db/save-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid: user.uid, historyItem })
+        });
 
-    } catch (err) {
-      console.error(err);
-      alert("Analysis failed. Please try again.");
+        await fetch("/api/db/update-stats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            uid: user.uid, 
+            stats: {
+              totalExercises: { _type: 'increment', value: 1 },
+              speechCount: { _type: 'increment', value: 1 },
+              speechScoreSum: { _type: 'increment', value: data.score }
+            }
+          })
+        });
+      } catch (dbErr) {
+        console.error("Database proxy failed:", dbErr);
+        // Fallback to client-side if proxy fails (though proxy is meant to be more reliable)
+        try {
+          await addDoc(collection(db, historyPath), historyItem);
+          const userRef = doc(db, 'users', user.uid);
+          await updateDoc(userRef, {
+            totalExercises: increment(1),
+            speechCount: increment(1),
+            speechScoreSum: increment(data.score),
+            updatedAt: new Date().toISOString()
+          });
+        } catch (firestoreErr) {
+          handleFirestoreError(firestoreErr, OperationType.WRITE, historyPath);
+        }
+      }
+
+    } catch (err: any) {
+      console.error("Analysis failed:", err);
+      // If it's a fetch error, show a more specific message
+      if (err.message === "Failed to fetch") {
+        alert("无法连接到 AI 服务，请检查您的网络连接或稍后重试。");
+      } else {
+        alert("分析失败: " + err.message);
+      }
     } finally {
       setIsAnalyzing(false);
     }

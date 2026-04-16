@@ -5,10 +5,12 @@ import * as THREE from 'three';
 import { Language, VisualAnalysisResult, HistoryItem } from '../types';
 import { translations } from '../locales';
 import { analyzeBodyLanguage } from '../services/geminiService';
+import { useAuth } from '../App';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, addDoc, doc, updateDoc, getDoc, increment } from 'firebase/firestore';
 
 interface VisualAnalyzerProps {
   lang: Language;
-  onSave: (item: HistoryItem) => void;
 }
 
 // Helper to access global MediaPipe objects
@@ -19,7 +21,8 @@ declare global {
   }
 }
 
-const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang, onSave }) => {
+const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang }) => {
+  const { user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const threeContainerRef = useRef<HTMLDivElement>(null);
@@ -375,7 +378,7 @@ const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang, onSave }) => {
   };
 
   const captureAndAnalyze = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !user) return;
     setIsAnalyzing(true);
     
     const ctx = canvasRef.current.getContext('2d');
@@ -389,19 +392,50 @@ const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang, onSave }) => {
             const result = await analyzeBodyLanguage(base64Image);
             setAnalysisResult(result);
             
-            // Save to history
-            const historyItem: HistoryItem = {
-                id: Date.now().toString(),
-                type: 'visual',
-                date: Date.now(),
-                summary: 'Visual Diagnosis',
-                details: result
+            // Save to history in Firestore
+            const historyPath = `users/${user.uid}/history`;
+            const historyItem: Omit<HistoryItem, 'id'> = {
+              uid: user.uid,
+              type: 'visual',
+              date: Date.now(),
+              summary: 'Visual Diagnosis',
+              details: result
             };
-            onSave(historyItem);
+            
+            try {
+                // Use server-side proxy for database writes
+                await fetch("/api/db/save-history", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ uid: user.uid, historyItem })
+                });
+
+                await fetch("/api/db/update-stats", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ 
+                    uid: user.uid, 
+                    stats: {
+                      totalExercises: { _type: 'increment', value: 1 }
+                    }
+                  })
+                });
+            } catch (dbErr) {
+                console.error("Database proxy failed:", dbErr);
+                try {
+                    await addDoc(collection(db, historyPath), historyItem);
+                    const userRef = doc(db, 'users', user.uid);
+                    await updateDoc(userRef, {
+                      totalExercises: increment(1),
+                      updatedAt: new Date().toISOString()
+                    });
+                } catch (firestoreErr) {
+                    handleFirestoreError(firestoreErr, OperationType.WRITE, historyPath);
+                }
+            }
 
         } catch (error) {
-            console.error(error);
-            alert("Analysis failed.");
+            handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/history`);
         } finally {
             setIsAnalyzing(false);
         }

@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and progress data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "photoURL": { "type": "string", "description": "User photo URL" },
+        "totalExercises": { "type": "number", "description": "Total number of exercises completed" },
+        "averageScore": { "type": "number", "description": "Average score across all exercises" },
+        "skillRadar": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "subject": { "type": "string" },
+              "A": { "type": "number" },
+              "fullMark": { "type": "number" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "HistoryItem": {
+      "title": "HistoryItem",
+      "description": "A single record of a user's activity (speech, visual, or debate)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID" },
+        "type": { "type": "string", "enum": ["speech", "visual", "debate"] },
+        "date": { "type": "number", "description": "Timestamp of the activity" },
+        "score": { "type": "number", "description": "Score for speech analysis" },
+        "summary": { "type": "string", "description": "Summary of the activity" },
+        "details": { "type": "object", "description": "Full analysis results" }
+      },
+      "required": ["uid", "type", "date", "summary"]
+    },
+    "DebateMessage": {
+      "title": "DebateMessage",
+      "description": "A message in a debate session",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "description": "ID of the debate session" },
+        "uid": { "type": "string", "description": "Sender UID (or 'ai')" },
+        "role": { "type": "string", "enum": ["user", "model"] },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["sessionId", "role", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/users/{userId}/history/{historyId}": {
+      "schema": "HistoryItem",
+      "description": "User activity history"
+    },
+    "/users/{userId}/debate_sessions/{sessionId}/messages/{messageId}": {
+      "schema": "DebateMessage",
+      "description": "Messages for a specific debate session"
+    }
+  }
+}

@@ -1,8 +1,4 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, VisualAnalysisResult } from "../types";
-
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 // System instruction for the speech analyzer
 const ANALYZER_SYSTEM_INSTRUCTION = `
@@ -13,46 +9,45 @@ Evaluate it based on:
 2. Argumentation (Are claims supported by evidence? Are there logical fallacies?)
 3. Fluency & Rhetoric (Is the language professional? Are rhetorical devices used effectively?)
 
-Provide a strict JSON response.
+Provide a strict JSON response with the following structure:
+{
+  "score": number,
+  "logicScore": number,
+  "argumentScore": number,
+  "fluencyScore": number,
+  "summary": string,
+  "strengths": string[],
+  "weaknesses": string[],
+  "suggestions": string[],
+  "structureAnalysis": {
+    "introduction": string,
+    "body": string,
+    "conclusion": string
+  }
+}
 `;
+
+const fetchWithRetry = async (url: string, options: any, retries = 2) => {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      if (i === retries) throw err;
+      console.warn(`Fetch failed, retrying... (${i + 1}/${retries})`, err);
+      await new Promise(res => setTimeout(res, 1000 * (i + 1))); // Exponential backoff
+    }
+  }
+};
 
 export const analyzeSpeechContent = async (text: string): Promise<AnalysisResult> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: text,
-      config: {
-        systemInstruction: ANALYZER_SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            score: { type: Type.NUMBER, description: "Overall score out of 100" },
-            logicScore: { type: Type.NUMBER, description: "Logic score out of 100" },
-            argumentScore: { type: Type.NUMBER, description: "Argumentation score out of 100" },
-            fluencyScore: { type: Type.NUMBER, description: "Fluency score out of 100" },
-            summary: { type: Type.STRING, description: "Brief summary of the speech quality" },
-            strengths: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of key strengths" },
-            weaknesses: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of areas for improvement" },
-            suggestions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Actionable advice for next time" },
-            structureAnalysis: {
-              type: Type.OBJECT,
-              properties: {
-                introduction: { type: Type.STRING, description: "Feedback on introduction" },
-                body: { type: Type.STRING, description: "Feedback on body paragraphs" },
-                conclusion: { type: Type.STRING, description: "Feedback on conclusion" }
-              }
-            }
-          },
-          required: ["score", "logicScore", "argumentScore", "fluencyScore", "summary", "strengths", "weaknesses", "suggestions", "structureAnalysis"]
-        }
-      }
+    return await fetchWithRetry("/api/ai/analyze-speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, systemInstruction: ANALYZER_SYSTEM_INSTRUCTION })
     });
-
-    const resultText = response.text;
-    if (!resultText) throw new Error("No response from Gemini");
-    
-    return JSON.parse(resultText) as AnalysisResult;
   } catch (error) {
     console.error("Analysis failed:", error);
     throw error;
@@ -74,21 +69,55 @@ export const createDebateChat = (topic: string, side: 'proposition' | 'oppositio
     5. Maintain a professional but competitive tone.
   `;
 
-  return ai.chats.create({
-    model: 'gemini-2.5-flash',
-    config: {
-      systemInstruction: systemInstruction,
+  const messages: { role: 'user' | 'assistant', content: string }[] = [];
+
+  return {
+    sendMessageStream: async function* (text: string) {
+      messages.push({ role: 'user', content: text });
+      
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, systemInstruction })
+      });
+
+      if (!response.ok) throw new Error("Chat failed");
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const dataStr = line.slice(6);
+            if (dataStr === "[DONE]") break;
+            try {
+              const data = JSON.parse(dataStr);
+              fullText += data.text;
+              yield { text: () => data.text }; // Keep compatibility with existing code calling .text()
+            } catch (e) {
+              // Ignore parse errors for partial chunks
+            }
+          }
+        }
+      }
+      messages.push({ role: 'assistant', content: fullText });
     }
-  });
+  };
 };
 
 export const generateRandomTopic = async (): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: "Generate a single, thought-provoking, competitive debate motion/topic suitable for high school or university students. Return ONLY the topic string.",
-    });
-    return response.text?.trim() || "This house believes that AI will replace teachers.";
+    const data = await fetchWithRetry("/api/ai/generate-topic", { method: "POST" });
+    return data.topic || "This house believes that AI will replace teachers.";
   } catch (error) {
     console.error("Failed to generate topic", error);
     return "This house believes that social media has done more harm than good.";
@@ -96,9 +125,6 @@ export const generateRandomTopic = async (): Promise<string> => {
 };
 
 export const analyzeBodyLanguage = async (base64Image: string): Promise<VisualAnalysisResult> => {
-    // Remove data URL prefix if present
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
-
     const prompt = `
       Analyze this image of a speaker. Focus on:
       1. Facial Expression (Confidence, Engagement, Nervousness)
@@ -111,33 +137,11 @@ export const analyzeBodyLanguage = async (base64Image: string): Promise<VisualAn
     `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: {
-                    expression: { type: Type.STRING },
-                    posture: { type: Type.STRING },
-                    eyeContact: { type: Type.STRING },
-                    suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
-                  },
-                  required: ["expression", "posture", "eyeContact", "suggestions"]
-                }
-            }
+        return await fetchWithRetry("/api/ai/analyze-visual", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: base64Image, prompt })
         });
-
-        const resultText = response.text;
-        if(!resultText) throw new Error("No response from visual analysis");
-        return JSON.parse(resultText) as VisualAnalysisResult;
-
     } catch (error) {
         console.error("Visual analysis failed", error);
         throw error;

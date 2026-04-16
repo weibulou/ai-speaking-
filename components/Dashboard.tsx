@@ -4,6 +4,7 @@ import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadius
 import { Trophy, TrendingUp, Activity, BookOpen, Mic, Scan } from 'lucide-react';
 import { Language, HistoryItem } from '../types';
 import { translations } from '../locales';
+import { useAuth } from '../App';
 
 interface DashboardProps {
   lang: Language;
@@ -11,6 +12,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
+  const { progress } = useAuth();
   const t = translations[lang].dashboard;
 
   // Calculate Metrics based on History
@@ -51,7 +53,15 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
     // Let's just average the raw scores from history if available, else show default mock.
     
     let radarData;
-    if (radarStats.count > 0) {
+    if (progress?.skillRadar) {
+        radarData = [
+            { subject: 'Logic', A: progress.skillRadar.logic, fullMark: 100 },
+            { subject: 'Rhetoric', A: progress.skillRadar.rhetoric, fullMark: 100 },
+            { subject: 'Evidence', A: progress.skillRadar.evidence, fullMark: 100 },
+            { subject: 'Fluency', A: progress.skillRadar.fluency, fullMark: 100 },
+            { subject: 'Structure', A: progress.skillRadar.structure, fullMark: 100 },
+        ];
+    } else if (radarStats.count > 0) {
         // Reset base to 0 for calculation
          radarStats = {
           logic: 0,
@@ -122,7 +132,7 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
           </div>
           <div>
             <p className="text-sm text-slate-500">{t.totalExercises}</p>
-            <h3 className="text-2xl font-bold text-slate-800">{metrics.totalExercises}</h3>
+            <h3 className="text-2xl font-bold text-slate-800">{progress?.totalExercises || metrics.totalExercises}</h3>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">
@@ -131,7 +141,11 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
           </div>
           <div>
             <p className="text-sm text-slate-500">{t.avgScore}</p>
-            <h3 className="text-2xl font-bold text-slate-800">{metrics.avgScore}</h3>
+            <h3 className="text-2xl font-bold text-slate-800">
+              {progress?.speechCount && progress.speechCount > 0 
+                ? ((progress.speechScoreSum || 0) / progress.speechCount).toFixed(1) 
+                : metrics.avgScore}
+            </h3>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">

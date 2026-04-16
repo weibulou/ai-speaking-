@@ -39,6 +39,7 @@ export interface VisualAnalysisResult {
 // New Interface for User History
 export interface HistoryItem {
   id: string;
+  uid?: string; // Added for Firestore
   type: 'speech' | 'visual' | 'debate';
   date: number;
   score?: number; // For speech
@@ -48,6 +49,8 @@ export interface HistoryItem {
 
 export interface UserProgress {
   totalExercises: number;
+  speechCount?: number;
+  speechScoreSum?: number;
   averageScore: number;
   history: HistoryItem[];
   skillRadar: { subject: string; A: number; fullMark: number }[];
