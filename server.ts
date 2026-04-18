@@ -42,8 +42,9 @@ const getDb = () => {
         const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
         
         if (serviceAccountVar) {
-            console.log("Firebase: Using Service Account from Env");
+            console.log("Firebase: Using Service Account from Env (Length: " + serviceAccountVar.length + ")");
             const serviceAccount = JSON.parse(serviceAccountVar);
+            console.log("Firebase: Extracted Project ID:", serviceAccount.project_id);
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
                 projectId: serviceAccount.project_id
@@ -115,16 +116,20 @@ app.get("/api/health", (req, res) => {
 
 app.get("/api/config-check", (req, res) => {
   const currentDb = getDb();
+  const serviceAccountFound = !!process.env.FIREBASE_SERVICE_ACCOUNT;
   res.json({
     isConfigured: !!process.env.OPENAI_API_KEY,
     databaseInitialized: !!currentDb,
+    firebaseServiceAccount: serviceAccountFound ? "Found (Length: " + process.env.FIREBASE_SERVICE_ACCOUNT?.length + ")" : "Missing",
     baseUrl: process.env.OPENAI_BASE_URL || "Not Set",
     model: process.env.AI_MODEL || "Not Set",
     env: {
         VERCEL: process.env.VERCEL,
         NODE_ENV: process.env.NODE_ENV,
-        PROJECT_ID: (currentDb && currentDb.projectId) || "None"
-    }
+        PROJECT_ID: (currentDb && currentDb.projectId) || "None",
+        DEPLOYMENT: process.env.VERCEL ? "Vercel" : "Cloud Run/Local"
+    },
+    howToFix: !serviceAccountFound && process.env.VERCEL ? "Please add FIREBASE_SERVICE_ACCOUNT to Vercel environment variables as a JSON string." : undefined
   });
 });
 
@@ -395,7 +400,7 @@ if (!isVercel) {
     // Standard production server (e.g. Cloud Run)
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*', (req, res) => {
+    app.get('/:any*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
     app.listen(PORT, "0.0.0.0", () => {
