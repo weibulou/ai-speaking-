@@ -44,20 +44,23 @@ const getDb = () => {
         let serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
         const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
         
-        if (serviceAccountVar) {
+        if (serviceAccountVar && serviceAccountVar.trim().length > 10) {
             console.log(`[Firebase] Using Service Account from Env (Length: ${serviceAccountVar.length})`);
             
-            // Clean up potentially malformed JSON (common in Vercel UI copy-paste)
             let serviceAccount;
             try {
                 serviceAccount = JSON.parse(serviceAccountVar);
             } catch (err) {
-                console.warn("[Firebase] Standard JSON.parse failed, attempting cleanup...");
-                // Handle escaped newlines or manual quote wrapping
+                console.warn("[Firebase] Initial JSON.parse failed, attempting cleanup...");
                 const cleaned = serviceAccountVar.trim()
-                    .replace(/\\n/g, '\n') // Fix literal \n
-                    .replace(/^['"]|['"]$/g, ''); // Fix extra wrapping quotes
-                serviceAccount = JSON.parse(cleaned);
+                    .replace(/\\n/g, '\n')
+                    .replace(/^['"]|['"]$/g, '');
+                try {
+                    serviceAccount = JSON.parse(cleaned);
+                } catch (err2) {
+                    console.error("[Firebase] All JSON parsing attempts failed. Disabling Database connection.");
+                    return null;
+                }
             }
 
             console.log(`[Firebase] Extracted Project ID: ${serviceAccount.project_id}`);

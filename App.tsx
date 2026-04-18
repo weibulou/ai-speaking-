@@ -144,29 +144,48 @@ function App() {
   const handleGuestLogin = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/auth/domestic-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isGuest: true })
-      });
+      console.log("Attempting guest login...");
       
-      if (!res.ok) throw new Error("Guest login failed");
+      // Attempt server-side guest login first
+      try {
+        const res = await fetch("/api/auth/domestic-login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isGuest: true })
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('domestic_uid', data.uid);
+          setUser(data);
+          setShowLoginModal(false);
+          if (currentView === AppView.LANDING) setCurrentView(AppView.DASHBOARD);
+          if (data.warning) alert("ℹ️ " + data.warning);
+          return;
+        }
+      } catch (e) {
+        console.warn("Server guest login failed, falling back to local guest mode", e);
+      }
       
-      const data = await res.json();
-      localStorage.setItem('domestic_uid', data.uid);
-      setUser(data);
+      // Absolute fallback: Client-side generated guest session
+      const guestId = "guest_local_" + Math.random().toString(36).substring(2, 9);
+      const localGuest = {
+        uid: guestId,
+        email: "local_guest@debatemaster.cloud",
+        displayName: "本地访客 (Local Guest)",
+        isGuest: true,
+        isLocal: true
+      };
+      
+      localStorage.setItem('domestic_uid', guestId);
+      setUser(localGuest);
       setShowLoginModal(false);
+      if (currentView === AppView.LANDING) setCurrentView(AppView.DASHBOARD);
+      alert("✨ 进入离线模式：由于服务器连接不稳定，已为您开启纯本地体验模式。");
       
-      if (currentView === AppView.LANDING) {
-        setCurrentView(AppView.DASHBOARD);
-      }
-      
-      if (data.warning) {
-        alert("ℹ️ " + data.warning);
-      }
     } catch (err: any) {
-      console.error("Guest login failed", err);
-      alert("访客登录失败，请检查网络或刷新页面。");
+      console.error("Guest login critical failure", err);
+      alert("登录系统出现异常，请尝试刷新页面。");
     } finally {
       setLoading(false);
     }
