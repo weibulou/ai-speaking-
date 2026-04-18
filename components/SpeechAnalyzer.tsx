@@ -130,9 +130,9 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
         <p className="text-slate-500">{t.subtitle}</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8 h-full">
         {/* Input Section */}
-        <div className="space-y-4 flex flex-col h-full">
+        <div className="space-y-4 flex flex-col min-h-[450px] md:h-full">
           <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col">
              <div className="flex justify-between mb-2">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Editor</span>
@@ -190,7 +190,7 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
         </div>
 
         {/* Results Section */}
-        <div className="space-y-4">
+        <div className="space-y-4 mt-6 lg:mt-0">
           {result ? (
             <div className="bg-white p-6 rounded-xl shadow-md border border-slate-100 h-full overflow-y-auto max-h-[700px] fade-in custom-scrollbar">
               <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-4">

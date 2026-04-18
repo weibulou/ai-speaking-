@@ -426,19 +426,37 @@ app.post("/api/db/update-stats", async (req, res) => {
 
 app.post("/api/ai/analyze-speech", async (req, res) => {
   const { text, systemInstruction } = req.body;
+  
+  if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "AI_KEY_NOT_CONFIGURED", message: "OpenAI API Key is missing in environment variables." });
+  }
+
   try {
     const response = await openai.chat.completions.create({
       model: process.env.AI_MODEL || "gpt-4o",
       messages: [
-        { role: "system", content: systemInstruction },
+        { role: "system", content: systemInstruction + "\nIMPORTANT: Always return ONLY a valid JSON object. Do not include markdown or explanations." },
         { role: "user", content: text }
       ],
       response_format: { type: "json_object" }
     });
-    res.json(JSON.parse(response.choices[0].message.content || "{}"));
+    
+    const rawContent = response.choices[0].message.content || "{}";
+    console.log("[AI Analysis] Raw Response received");
+    
+    let parsed;
+    try {
+        parsed = JSON.parse(rawContent);
+    } catch (parseErr) {
+        console.warn("[AI Analysis] JSON parse failed, attempting markdown cleanup...");
+        const cleaned = rawContent.replace(/```json/g, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleaned);
+    }
+    
+    res.json(parsed);
   } catch (error: any) {
     console.error("AI Analysis Error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "AI_SERVICE_ERROR", message: error.message });
   }
 });
 
@@ -489,6 +507,9 @@ app.post("/api/ai/generate-topic", async (req, res) => {
 
 app.post("/api/ai/analyze-visual", async (req, res) => {
   const { image, prompt } = req.body;
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(500).json({ error: "AI_KEY_NOT_CONFIGURED" });
+  }
   try {
     const response = await openai.chat.completions.create({
       model: process.env.AI_MODEL || "gpt-4o",
@@ -496,14 +517,22 @@ app.post("/api/ai/analyze-visual", async (req, res) => {
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
+            { type: "text", text: prompt + "\nIMPORTANT: Always return ONLY a valid JSON object. No markdown." },
             { type: "image_url", image_url: { url: image } }
           ]
         }
       ],
       response_format: { type: "json_object" }
     });
-    res.json(JSON.parse(response.choices[0].message.content || "{}"));
+    
+    const content = response.choices[0].message.content || "{}";
+    try {
+       res.json(JSON.parse(content));
+    } catch(e) {
+       console.warn("[AI Visual] JSON parse failed, attempting cleanup...");
+       const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+       res.json(JSON.parse(cleaned));
+    }
   } catch (error: any) {
     console.error("AI Visual Error:", error);
     res.status(500).json({ error: error.message });

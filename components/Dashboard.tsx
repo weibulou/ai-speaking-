@@ -177,45 +177,45 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
       )}
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">
-          <div className="p-3 bg-blue-100 text-blue-600 rounded-full">
-            <Trophy size={24} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center md:items-start md:space-x-4 transition-transform active:scale-95 cursor-default">
+          <div className="p-2 md:p-3 bg-blue-100 text-blue-600 rounded-full mb-2 md:mb-0">
+            <Trophy size={20} />
           </div>
-          <div>
-            <p className="text-sm text-slate-500">{t.totalExercises}</p>
-            <h3 className="text-2xl font-bold text-slate-800">{progress?.totalExercises || metrics.totalExercises}</h3>
+          <div className="text-center md:text-left">
+            <p className="text-[10px] md:text-sm text-slate-500 uppercase tracking-tight">{t.totalExercises}</p>
+            <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">{progress?.totalExercises || metrics.totalExercises}</h3>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">
-          <div className="p-3 bg-green-100 text-green-600 rounded-full">
-            <TrendingUp size={24} />
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center md:items-start md:space-x-4 transition-transform active:scale-95 cursor-default">
+          <div className="p-2 md:p-3 bg-green-100 text-green-600 rounded-full mb-2 md:mb-0">
+            <TrendingUp size={20} />
           </div>
-          <div>
-            <p className="text-sm text-slate-500">{t.avgScore}</p>
-            <h3 className="text-2xl font-bold text-slate-800">
+          <div className="text-center md:text-left">
+            <p className="text-[10px] md:text-sm text-slate-500 uppercase tracking-tight">{t.avgScore}</p>
+            <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">
               {progress?.speechCount && progress.speechCount > 0 
                 ? ((progress.speechScoreSum || 0) / progress.speechCount).toFixed(1) 
                 : metrics.avgScore}
             </h3>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">
-          <div className="p-3 bg-purple-100 text-purple-600 rounded-full">
-            <Activity size={24} />
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center md:items-start md:space-x-4 transition-transform active:scale-95 cursor-default">
+          <div className="p-2 md:p-3 bg-purple-100 text-purple-600 rounded-full mb-2 md:mb-0">
+            <Activity size={20} />
           </div>
-          <div>
-            <p className="text-sm text-slate-500">{t.winRate}</p>
-            <h3 className="text-2xl font-bold text-slate-800">-- %</h3>
+          <div className="text-center md:text-left">
+            <p className="text-[10px] md:text-sm text-slate-500 uppercase tracking-tight">{t.winRate}</p>
+            <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">-- %</h3>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4 transition-transform hover:scale-[1.02] cursor-default">
-          <div className="p-3 bg-orange-100 text-orange-600 rounded-full">
-            <BookOpen size={24} />
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row items-center md:items-start md:space-x-4 transition-transform active:scale-95 cursor-default">
+          <div className="p-2 md:p-3 bg-orange-100 text-orange-600 rounded-full mb-2 md:mb-0">
+            <BookOpen size={20} />
           </div>
-          <div>
-            <p className="text-sm text-slate-500">{t.concepts}</p>
-            <h3 className="text-2xl font-bold text-slate-800">5</h3>
+          <div className="text-center md:text-left">
+            <p className="text-[10px] md:text-sm text-slate-500 uppercase tracking-tight">{t.concepts}</p>
+            <h3 className="text-xl md:text-2xl font-bold text-slate-800 leading-tight">5</h3>
           </div>
         </div>
       </div>

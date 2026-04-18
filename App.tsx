@@ -399,18 +399,18 @@ function App() {
         </aside>
 
         {/* Mobile Header */}
-        <div className="md:hidden bg-white border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+        <div className="md:hidden bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
           <div className="flex items-center gap-2" onClick={() => setCurrentView(AppView.LANDING)}>
-            <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">D</span>
+            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+              <span className="text-white font-bold text-lg italic">D</span>
             </div>
-            <h1 className="text-lg font-bold text-slate-900">{t.common.appName}</h1>
+            <h1 className="text-xl font-black text-slate-900 tracking-tighter">{t.common.appName}</h1>
           </div>
-          <div className="flex items-center gap-4">
-              <button onClick={toggleLanguage} className="text-slate-600">
+          <div className="flex items-center gap-3">
+              <button onClick={toggleLanguage} className="w-10 h-10 flex items-center justify-center rounded-full active:bg-slate-100 text-slate-600">
                   <Languages size={20} />
               </button>
-              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-slate-600">
+              <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="w-10 h-10 flex items-center justify-center rounded-full active:bg-slate-100 text-slate-700">
               {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
           </div>
@@ -418,32 +418,55 @@ function App() {
 
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 bg-slate-50 z-10 pt-20 px-6 space-y-4 animate-in slide-in-from-top-10 duration-200 overflow-y-auto">
-            <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label={t.nav.dashboard} />
-            <NavItem view={AppView.SPEECH_ANALYSIS} icon={Mic} label={t.nav.speech} />
-            <NavItem view={AppView.VISUAL_ANALYSIS} icon={Scan} label={t.nav.visual} />
-            <NavItem view={AppView.DEBATE_SIMULATOR} icon={MessageSquare} label={t.nav.debate} />
-            <NavItem view={AppView.LEARNING_CENTER} icon={Video} label={t.nav.learning} />
-            <NavItem view={AppView.RESOURCES} icon={Library} label={t.nav.resources} />
+          <div className="md:hidden fixed inset-0 bg-slate-50/95 backdrop-blur-xl z-10 pt-20 px-6 space-y-3 animate-in fade-in slide-in-from-top-4 duration-300 overflow-y-auto">
+            <div className="grid grid-cols-1 gap-2 pt-4">
+                <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label={t.nav.dashboard} />
+                <NavItem view={AppView.SPEECH_ANALYSIS} icon={Mic} label={t.nav.speech} />
+                <NavItem view={AppView.VISUAL_ANALYSIS} icon={Scan} label={t.nav.visual} />
+                <NavItem view={AppView.DEBATE_SIMULATOR} icon={MessageSquare} label={t.nav.debate} />
+                <NavItem view={AppView.LEARNING_CENTER} icon={Video} label={t.nav.learning} />
+                <NavItem view={AppView.RESOURCES} icon={Library} label={t.nav.resources} />
+            </div>
             
-            <div className="pt-4 border-t border-slate-200">
+            <div className="pt-6 border-t border-slate-200 mt-4 space-y-6">
               {user ? (
-                <button onClick={handleLogout} className="flex items-center gap-2 text-red-600 font-medium">
-                  <LogOut size={20} />
-                  <span>Logout</span>
-                </button>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold shadow-lg">
+                            {user.displayName?.[0] || 'U'}
+                        </div>
+                        <div>
+                            <p className="font-bold text-slate-800">{user.displayName || 'User'}</p>
+                            <p className="text-xs text-slate-500">{t.common.plan}</p>
+                        </div>
+                    </div>
+                    <button onClick={handleLogout} className="p-3 text-red-600 bg-red-50 rounded-full active:bg-red-100">
+                      <LogOut size={22} />
+                    </button>
+                </div>
               ) : (
-                <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 text-indigo-600 font-medium">
-                  <LogIn size={20} />
-                  <span>Login</span>
+                <button 
+                    onClick={() => setShowLoginModal(true)} 
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-3 shadow-xl shadow-indigo-200 active:scale-[0.98] transition-transform"
+                >
+                  <LogIn size={22} />
+                  <span>立即登录系统</span>
                 </button>
               )}
+              
+              <button 
+                onClick={() => { toggleLanguage(); setIsMobileMenuOpen(false); }}
+                className="w-full py-3 bg-white border border-slate-200 rounded-xl text-slate-700 font-medium flex items-center justify-center gap-2"
+              >
+                <Languages size={18} />
+                {lang === 'zh' ? '切换为 English' : 'Switch to Chinese'}
+              </button>
             </div>
           </div>
         )}
 
             {/* Main Content Area */}
-            <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-x-hidden min-h-screen">
+            <main className="flex-1 md:ml-64 p-3 md:p-8 overflow-x-hidden min-h-screen">
           <div className="max-w-7xl mx-auto">
             {/* Server Health Warning */}
             {serverHealthy === false && (
