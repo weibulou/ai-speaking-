@@ -206,22 +206,68 @@ function App() {
     </button>
   );
 
+  if (currentView === AppView.LANDING) {
+    return (
+      <AuthContext.Provider value={{ user, loading, progress, refreshData }}>
+        <LandingPage 
+          onStart={() => {
+            if (user) setCurrentView(AppView.DASHBOARD);
+            else setShowLoginModal(true);
+          }} 
+          lang={lang} 
+        />
+        {/* Global Login Modal for Landing */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 overflow-hidden relative">
+              {loading && (
+                <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10">
+                   <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                   <p className="text-slate-600 font-medium tracking-tight">正在同步您的云端账号...</p>
+                </div>
+              )}
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold">账号登录</h3>
+                <button onClick={() => setShowLoginModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleDomesticLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">电子邮箱</label>
+                  <input 
+                    type="email" 
+                    required 
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="yourname@domain.com"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                    autoFocus
+                  />
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+                >
+                  {loading ? '同步中...' : '确认登录'}
+                </button>
+                <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+                  您的学习进度和历史记录将与此邮箱永久绑定。
+                </p>
+              </form>
+            </div>
+          </div>
+        )}
+      </AuthContext.Provider>
+    );
+  }
+
   return (
     <AuthContext.Provider value={{ user, loading, progress, refreshData }}>
       <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 transition-colors duration-300 relative">
-        
-        {currentView === AppView.LANDING ? (
-          <LandingPage 
-            onStart={() => {
-              if (user) setCurrentView(AppView.DASHBOARD);
-              else setShowLoginModal(true);
-            }} 
-            lang={lang} 
-          />
-        ) : (
-          <>
-            {/* Sidebar Navigation (Desktop) */}
-            <aside className="hidden md:flex flex-col w-64 bg-slate-50 border-r border-slate-200 p-6 fixed h-full z-10 transition-all duration-300">
+        {/* Sidebar Navigation (Desktop) */}
+        <aside className="hidden md:flex flex-col w-64 bg-slate-50 border-r border-slate-200 p-6 fixed h-full z-10 transition-all duration-300">
           <div className="flex items-center gap-2 mb-10 px-2 cursor-pointer" onClick={() => setCurrentView(AppView.LANDING)}>
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-indigo-200 shadow-md">
               <span className="text-white font-bold text-xl">D</span>
@@ -395,10 +441,8 @@ function App() {
             )}
           </div>
         </main>
-      </>
-    )}
 
-        {/* Global Login Modal - Moved outside of view conditional for visibility everywhere */}
+        {/* Global Login Modal for Dashboard View */}
         {showLoginModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 overflow-hidden relative">
