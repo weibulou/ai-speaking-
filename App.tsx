@@ -116,8 +116,7 @@ function App() {
 
       // Show warning if database is slow but login succeeded (emergency session)
       if (data.warning) {
-        console.warn(data.warning);
-        // We could show a toast here if we had a toast component
+        alert("⚠️ " + data.warning);
       }
 
       // Background data refresh
@@ -126,15 +125,16 @@ function App() {
         .finally(() => setLoading(false));
       
     } catch (err: any) {
-      console.error("Login component caught error:", err);
+      console.error("Critical Login Error:", err);
       setLoading(false);
       
-      let errorMsg = `登录请求失败: ${err.message || "未知网络错误"}`;
+      let errorMsg = `登录失败: ${err.message || "服务器响应异常"}`;
       if (err.message === 'DATABASE_TIMEOUT') {
-        errorMsg = "数据库响应超时，已尝试为您建立临时会话，请刷新重试。";
-      } else if (err.message && err.message.includes('permission')) {
-        errorMsg = "云端数据库权限受限。正在切换到本地增强模式...";
-        // We could manually trigger a guest session here if we wanted
+        errorMsg = "数据库响应超时（Vercel 限制），但已为您开启紧急本地模式，请刷新。";
+      } else if (err.message && (err.message.includes('permission') || err.message.includes('insufficient'))) {
+        errorMsg = "云端权限受限，已切换至本地数据模式。";
+      } else if (err.message && err.message.includes('FAILED_TO_FETCH')) {
+        errorMsg = "无法连接到后端接口，请确认 Vercel 部署已完成且环境变量已配置。";
       }
       
       alert(errorMsg);
