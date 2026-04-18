@@ -134,9 +134,22 @@ app.get("/api/config-check", (req, res) => {
 });
 
 app.get("/api/db/user/:uid", async (req, res) => {
-  const currentDb = getDb();
-  if (!currentDb) return res.status(503).json({ error: "Database not initialized" });
   const { uid } = req.params;
+  const isGuest = uid.startsWith('guest_');
+  const currentDb = getDb();
+  
+  if (!currentDb || isGuest) {
+    console.warn(`Database not initialized or guest mode for UID: ${uid}`);
+    return res.json({
+        uid,
+        email: "guest@debatemaster.cloud",
+        displayName: isGuest ? "访客 (Guest)" : "临时用户",
+        isTemporary: true,
+        isGuest: true,
+        warning: isGuest ? "访客模式：数据不保存" : "数据库连接失败，已切换至本地模式。"
+    });
+  }
+  
   try {
     const userDoc: any = await withTimeout(currentDb.collection('users').doc(uid).get());
     if (!userDoc.exists) {
@@ -163,9 +176,12 @@ app.get("/api/db/user/:uid", async (req, res) => {
 });
 
 app.get("/api/db/history/:uid", async (req, res) => {
-  const currentDb = getDb();
-  if (!currentDb) return res.status(503).json({ error: "Database not initialized" });
   const { uid } = req.params;
+  const isGuest = uid.startsWith('guest_');
+  const currentDb = getDb();
+  
+  if (!currentDb || isGuest) return res.json([]);
+  
   try {
     const snapshot: any = await withTimeout(
       currentDb.collection('users').doc(uid).collection('history')
@@ -187,7 +203,21 @@ app.get("/api/db/history/:uid", async (req, res) => {
 
 app.post("/api/auth/domestic-login", async (req, res) => {
   try {
-    const { email, displayName } = req.body || {};
+    const { email, displayName, isGuest } = req.body || {};
+    
+    // Explicit guest mode support
+    if (isGuest) {
+        const guestId = "guest_" + Math.random().toString(36).substring(2, 9);
+        return res.json({ 
+            uid: guestId, 
+            email: "guest@debatemaster.cloud", 
+            displayName: "访客 (Guest)", 
+            isTemporary: true,
+            isGuest: true,
+            warning: "您正以访客模式登录，数据将仅保存在本地。"
+        });
+    }
+
     if (!email) return res.status(400).json({ error: "Email required" });
     
     console.log(`>>> Login Request: ${email}`);
@@ -247,9 +277,14 @@ app.post("/api/auth/domestic-login", async (req, res) => {
 });
 
 app.post("/api/db/save-history", async (req, res) => {
-  const currentDb = getDb();
-  if (!currentDb) return res.status(500).json({ error: "Database not initialized" });
   const { uid, historyItem } = req.body;
+  const isGuest = uid?.startsWith('guest_');
+  const currentDb = getDb();
+  
+  if (!currentDb || isGuest) {
+      return res.json({ id: "local-" + Date.now(), localOnly: true });
+  }
+  
   try {
     const historyRef = currentDb.collection('users').doc(uid).collection('history');
     const docRef = await historyRef.add({
@@ -268,9 +303,14 @@ app.post("/api/db/save-history", async (req, res) => {
 });
 
 app.post("/api/db/update-stats", async (req, res) => {
-  const currentDb = getDb();
-  if (!currentDb) return res.status(500).json({ error: "Database not initialized" });
   const { uid, stats } = req.body;
+  const isGuest = uid?.startsWith('guest_');
+  const currentDb = getDb();
+  
+  if (!currentDb || isGuest) {
+      return res.json({ success: true, localOnly: true });
+  }
+  
   try {
     const userRef = currentDb.collection('users').doc(uid);
     const updateData: any = {};

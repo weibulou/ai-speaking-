@@ -141,6 +141,37 @@ function App() {
     }
   };
 
+  const handleGuestLogin = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("/api/auth/domestic-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isGuest: true })
+      });
+      
+      if (!res.ok) throw new Error("Guest login failed");
+      
+      const data = await res.json();
+      localStorage.setItem('domestic_uid', data.uid);
+      setUser(data);
+      setShowLoginModal(false);
+      
+      if (currentView === AppView.LANDING) {
+        setCurrentView(AppView.DASHBOARD);
+      }
+      
+      if (data.warning) {
+        alert("ℹ️ " + data.warning);
+      }
+    } catch (err: any) {
+      console.error("Guest login failed", err);
+      alert("访客登录失败，请检查网络或刷新页面。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('domestic_uid');
     setUser(null);
@@ -253,6 +284,25 @@ function App() {
                 >
                   {loading ? '同步中...' : '确认登录'}
                 </button>
+
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="px-2 bg-white text-slate-500 uppercase">或者</span>
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleGuestLogin}
+                  disabled={loading}
+                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  游客登录 (直接体验)
+                </button>
+
                 <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
                   您的学习进度和历史记录将与此邮箱永久绑定。
                 </p>
@@ -479,6 +529,25 @@ function App() {
                 >
                   {loading ? '同步中...' : '确认登录'}
                 </button>
+
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="px-2 bg-white text-slate-500 uppercase font-sans">或者</span>
+                  </div>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleGuestLogin}
+                  disabled={loading}
+                  className="w-full py-3 bg-slate-100 text-slate-700 rounded-lg font-bold hover:bg-slate-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  游客登录 (直接进入)
+                </button>
+
                 <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
                   您的学习进度和历史记录将与此邮箱永久绑定。
                 </p>
