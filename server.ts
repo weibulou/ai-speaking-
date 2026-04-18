@@ -58,7 +58,121 @@ async function startServer() {
     baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
   });
 
+  // Helper to wrap Firestore calls with timeout
+  const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number = 3000): Promise<T> => {
+    let timeoutId: NodeJS.Timeout;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('DATABASE_TIMEOUT')), timeoutMs);
+    });
+    
+    try {
+      const result = await Promise.race([promise, timeout]);
+      clearTimeout(timeoutId!);
+      return result;
+    } catch (err) {
+      clearTimeout(timeoutId!);
+      throw err;
+    }
+  };
+
   // API Routes
+  // NEW: Data Retrieval Endpoints for Domestic Compatibility (No VPN required for frontend)
+  app.get("/api/db/user/:uid", async (req, res) => {
+    if (!db) return res.status(503).json({ error: "Database not initialized" });
+    const { uid } = req.params;
+    try {
+      const userDoc: any = await withTimeout(db.collection('users').doc(uid).get());
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(userDoc.data());
+    } catch (error: any) {
+      console.error(`DB Get User Error (${uid}):`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/db/history/:uid", async (req, res) => {
+    if (!db) return res.status(503).json({ error: "Database not initialized" });
+    const { uid } = req.params;
+    try {
+      const snapshot: any = await withTimeout(
+        db.collection('users').doc(uid).collection('history')
+          .orderBy('date', 'desc')
+          .limit(50)
+          .get()
+      );
+      const items = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+      res.json(items);
+    } catch (error: any) {
+      console.error(`DB Get History Error (${uid}):`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/domestic-login", async (req, res) => {
+    const { email, displayName } = req.body;
+    console.log(`>>> Login Request Received for: ${email}`);
+    
+    if (!email) return res.status(400).json({ error: "Email required" });
+    
+    const uid = Buffer.from(email.toLowerCase().trim()).toString('base64').replace(/=/g, '');
+    
+    if (!db) {
+        console.warn("!!! DB not initialized, returning temp user !!!");
+        return res.json({ uid, email, displayName: displayName || email.split('@')[0], isOffline: true });
+    }
+
+    try {
+      console.log(`Checking Firestore for UID: ${uid}`);
+      const userRef = db.collection('users').doc(uid);
+      const doc: any = await withTimeout(userRef.get());
+      
+      let userData: any;
+      if (!doc.exists) {
+        console.log(`User not found, creating new profile for ${email}`);
+        userData = {
+          uid,
+          email,
+          displayName: displayName || email.split('@')[0],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          totalExercises: 0,
+          averageScore: 0,
+          skillRadar: [
+            { subject: 'Logic', A: 60, fullMark: 100 },
+            { subject: 'Rhetoric', A: 50, fullMark: 100 },
+            { subject: 'Evidence', A: 55, fullMark: 100 },
+            { subject: 'Fluency', A: 70, fullMark: 100 },
+            { subject: 'Structure', A: 55, fullMark: 100 },
+          ]
+        };
+        await withTimeout(userRef.set(userData));
+        console.log(`New user profile created successfully`);
+      } else {
+        console.log(`User profile found`);
+        userData = doc.data();
+      }
+      
+      console.log(`Login Response Ready for ${email}`);
+      res.json(userData);
+    } catch (error: any) {
+      console.error("!!! Domestic Login Error !!!", error);
+      // Fallback: If DB is unreachable/timeouts, return a temporary user session so user isn't stuck
+      if (error.message === 'DATABASE_TIMEOUT' || error.message?.includes('permission')) {
+          console.warn("Returning emergency guest session due to DB issues");
+          return res.json({ 
+              uid, 
+              email, 
+              displayName: displayName || email.split('@')[0], 
+              isTemporary: true,
+              warning: "Cloud database connection slow, using local session."
+          });
+      }
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ 
       status: "ok", 

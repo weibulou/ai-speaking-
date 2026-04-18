@@ -4,15 +4,13 @@ import { createDebateChat } from '../services/geminiService';
 import { Message, Language } from '../types';
 import { translations } from '../locales';
 import { useAuth } from '../App';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 
 interface DebateArenaProps {
   lang: Language;
 }
 
 const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
-  const { user } = useAuth();
+  const { user, refreshData } = useAuth();
   const [topic, setTopic] = useState('');
   const [side, setSide] = useState<'proposition' | 'opposition'>('proposition');
   const [isStarted, setIsStarted] = useState(false);
@@ -103,30 +101,19 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
           }
         })
       });
+      
+      // Update stats and trigger refresh
+      await fetch("/api/db/update-stats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          uid: user.uid, 
+          stats: { totalExercises: { _type: 'increment', value: 1 } }
+        })
+      });
+      await refreshData();
     } catch (error) {
       console.error("Database proxy failed:", error);
-      // Fallback
-      try {
-        await addDoc(collection(db, 'debate_sessions'), {
-          sessionId: newSessionId,
-          role: 'model',
-          text: welcomeMsg,
-          timestamp: initialMsg.timestamp,
-          uid: user.uid
-        });
-        await updateDoc(doc(db, 'users', user.uid), {
-          totalExercises: increment(1)
-        });
-        await addDoc(collection(db, `users/${user.uid}/history`), {
-          uid: user.uid,
-          type: 'debate',
-          date: initialMsg.timestamp,
-          summary: `Debate: ${topic}`,
-          details: { topic, side, sessionId: newSessionId }
-        });
-      } catch (firestoreErr) {
-        handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
-      }
     }
   };
 
@@ -162,17 +149,6 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
       });
     } catch (error) {
       console.error("Database proxy failed:", error);
-      try {
-        await addDoc(collection(db, 'debate_sessions'), {
-          sessionId,
-          role: 'user',
-          text: userMsg.text,
-          timestamp: userMsg.timestamp,
-          uid: user.uid
-        });
-      } catch (firestoreErr) {
-        handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
-      }
     }
 
     try {
@@ -218,22 +194,10 @@ const DebateArena: React.FC<DebateArenaProps> = ({ lang }) => {
         });
       } catch (error) {
         console.error("Database proxy failed:", error);
-        try {
-          await addDoc(collection(db, 'debate_sessions'), {
-            sessionId,
-            role: 'model',
-            text: fullText,
-            timestamp: botTimestamp,
-            uid: user.uid
-          });
-        } catch (firestoreErr) {
-          handleFirestoreError(firestoreErr, OperationType.WRITE, 'debate_sessions');
-        }
       }
 
     } catch (error) {
       console.error("Debate error", error);
-      handleFirestoreError(error, OperationType.WRITE, 'debate_sessions');
     } finally {
       setIsTyping(false);
     }

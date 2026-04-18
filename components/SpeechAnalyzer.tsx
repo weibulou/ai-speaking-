@@ -5,15 +5,13 @@ import { analyzeSpeechContent, generateRandomTopic } from '../services/geminiSer
 import { AnalysisResult, Language, HistoryItem } from '../types';
 import { translations } from '../locales';
 import { useAuth } from '../App';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 
 interface SpeechAnalyzerProps {
   lang: Language;
 }
 
 const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
-  const { user, progress } = useAuth();
+  const { user, progress, refreshData } = useAuth();
   const [text, setText] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -60,12 +58,11 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
   const handleAnalyze = async () => {
     if (!text.trim() || !user) return;
     setIsAnalyzing(true);
+    setResult(null);
     try {
       const data = await analyzeSpeechContent(text);
       setResult(data);
       
-      // Save to history in Firestore
-      const historyPath = `users/${user.uid}/history`;
       const historyItem: Omit<HistoryItem, 'id'> = {
         uid: user.uid,
         type: 'speech',
@@ -76,7 +73,6 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
       };
       
       try {
-        // Use server-side proxy for database writes to avoid client-side network issues
         await fetch("/api/db/save-history", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -95,21 +91,11 @@ const SpeechAnalyzer: React.FC<SpeechAnalyzerProps> = ({ lang }) => {
             }
           })
         });
+
+        // Trigger dashboard refresh via context
+        await refreshData();
       } catch (dbErr) {
         console.error("Database proxy failed:", dbErr);
-        // Fallback to client-side if proxy fails (though proxy is meant to be more reliable)
-        try {
-          await addDoc(collection(db, historyPath), historyItem);
-          const userRef = doc(db, 'users', user.uid);
-          await updateDoc(userRef, {
-            totalExercises: increment(1),
-            speechCount: increment(1),
-            speechScoreSum: increment(data.score),
-            updatedAt: new Date().toISOString()
-          });
-        } catch (firestoreErr) {
-          handleFirestoreError(firestoreErr, OperationType.WRITE, historyPath);
-        }
       }
 
     } catch (err: any) {

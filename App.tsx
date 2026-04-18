@@ -10,31 +10,143 @@ import Resources from './components/Resources';
 import LandingPage from './components/LandingPage';
 import { AppView, Language, HistoryItem, UserProgress } from './types';
 import { translations } from './locales';
-import { auth, loginWithGoogle, logout, onAuthStateChanged, db, User, handleFirestoreError, OperationType } from './firebase';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit } from 'firebase/firestore';
+
+// Domestic Helper Functions (Proxied via backend, no VPN needed)
+const fetchUserProfile = async (uid: string) => {
+  const res = await fetch(`/api/db/user/${uid}`);
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+};
+
+const fetchUserHistory = async (uid: string) => {
+  const res = await fetch(`/api/db/history/${uid}`);
+  if (!res.ok) throw new Error("Failed to fetch history");
+  return res.json();
+};
+
+const domesticLogin = async (email: string) => {
+  console.log(`Attempting domestic login for: ${email}`);
+  try {
+    const res = await fetch("/api/auth/domestic-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.error || `Server responded with ${res.status}`);
+    }
+    
+    const data = await res.json();
+    console.log("Login successful:", data);
+    return data;
+  } catch (err) {
+    console.error("fetch(/api/auth/domestic-login) collapsed:", err);
+    throw err;
+  }
+};
 
 // Auth Context
 interface AuthContextType {
-  user: User | null;
+  user: any | null;
   loading: boolean;
   progress: UserProgress | null;
+  refreshData: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true, progress: null });
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  loading: true, 
+  progress: null,
+  refreshData: async () => {}
+});
+
 export const useAuth = () => useContext(AuthContext);
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>(AppView.LANDING);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [lang, setLang] = useState<Language>('zh');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
   
   // Auth & Progress State
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [apiStatus, setApiStatus] = useState<{ isConfigured: boolean; baseUrl: string; model: string } | null>(null);
   const [serverHealthy, setServerHealthy] = useState<boolean | null>(null);
+
+  const refreshData = async () => {
+    const storedUid = localStorage.getItem('domestic_uid');
+    if (storedUid) {
+      try {
+        const [profile, hist] = await Promise.all([
+          fetchUserProfile(storedUid),
+          fetchUserHistory(storedUid)
+        ]);
+        setProgress(profile);
+        setHistory(hist);
+      } catch (err) {
+        console.error("Refresh failed", err);
+      }
+    }
+  };
+
+  const handleDomesticLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loginEmail) return;
+    
+    console.log("Initiating login for:", loginEmail);
+    try {
+      setLoading(true);
+      const data = await domesticLogin(loginEmail);
+      
+      localStorage.setItem('domestic_uid', data.uid);
+      setUser(data);
+      setShowLoginModal(false);
+      
+      // If landing page, go to dashboard
+      if (currentView === AppView.LANDING) {
+        console.log("Navigating to dashboard...");
+        setCurrentView(AppView.DASHBOARD);
+      }
+
+      // Show warning if database is slow but login succeeded (emergency session)
+      if (data.warning) {
+        console.warn(data.warning);
+        // We could show a toast here if we had a toast component
+      }
+
+      // Background data refresh
+      refreshData()
+        .catch(err => console.error("Initial data fetch background error:", err))
+        .finally(() => setLoading(false));
+      
+    } catch (err: any) {
+      console.error("Login component caught error:", err);
+      setLoading(false);
+      
+      let errorMsg = "登录请求失败，请检查网络并重试。";
+      if (err.message === 'DATABASE_TIMEOUT') {
+        errorMsg = "数据库响应超时，已尝试为您建立临时会话，请刷新重试。";
+      } else if (err.message && err.message.includes('Login failed')) {
+        errorMsg = "登录失败，服务器拒绝了请求。";
+      }
+      
+      alert(errorMsg);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('domestic_uid');
+    setUser(null);
+    setProgress(null);
+    setHistory([]);
+    setCurrentView(AppView.LANDING);
+  };
 
   const checkServer = async () => {
     try {
@@ -48,89 +160,27 @@ function App() {
 
   useEffect(() => {
     checkServer();
-    // Check API configuration status
     fetch("/api/config-check")
       .then(res => res.json())
       .then(data => setApiStatus(data))
       .catch(err => console.error("Failed to check API status", err));
 
-    let unsubUser: (() => void) | null = null;
-    let unsubHistory: (() => void) | null = null;
-
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
+    const storedUid = localStorage.getItem('domestic_uid');
+    if (storedUid) {
+      fetchUserProfile(storedUid)
+        .then(profile => {
+          setUser(profile);
+          return fetchUserHistory(storedUid);
+        })
+        .then(hist => setHistory(hist))
+        .catch(err => {
+          console.warn("Auto-login failed, maybe session expired or no VPN (if using old SDK)", err);
+          localStorage.removeItem('domestic_uid');
+        })
+        .finally(() => setLoading(false));
+    } else {
       setLoading(false);
-      
-      // Cleanup previous listeners
-      if (unsubUser) unsubUser();
-      if (unsubHistory) unsubHistory();
-
-      if (currentUser) {
-        // Initialize/Fetch User Profile
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        try {
-          const userDoc = await getDoc(userDocRef);
-          if (!userDoc.exists()) {
-            const initialProgress: any = {
-              uid: currentUser.uid,
-              email: currentUser.email,
-              displayName: currentUser.displayName,
-              photoURL: currentUser.photoURL,
-              totalExercises: 0,
-              speechCount: 0,
-              speechScoreSum: 0,
-              averageScore: 0,
-              skillRadar: [
-                { subject: 'Logic', A: 60, fullMark: 100 },
-                { subject: 'Argument', A: 50, fullMark: 100 },
-                { subject: 'Fluency', A: 70, fullMark: 100 },
-                { subject: 'Structure', A: 55, fullMark: 100 },
-                { subject: 'Delivery', A: 65, fullMark: 100 },
-              ],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            };
-            await setDoc(userDocRef, initialProgress);
-            setProgress(initialProgress);
-          }
-
-          // Listen for user profile/progress updates
-          unsubUser = onSnapshot(userDocRef, (doc) => {
-            if (doc.exists()) {
-              setProgress(doc.data() as UserProgress);
-            }
-          }, (error) => {
-            handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
-          });
-
-          // Listen for history updates
-          const historyQuery = query(
-            collection(db, 'users', currentUser.uid, 'history'),
-            orderBy('date', 'desc'),
-            limit(50)
-          );
-          
-          unsubHistory = onSnapshot(historyQuery, (snapshot) => {
-            const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HistoryItem));
-            setHistory(items);
-          }, (error) => {
-            handleFirestoreError(error, OperationType.LIST, `users/${currentUser.uid}/history`);
-          });
-
-        } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
-        }
-      } else {
-        setProgress(null);
-        setHistory([]);
-      }
-    });
-
-    return () => {
-      unsubscribeAuth();
-      if (unsubUser) unsubUser();
-      if (unsubHistory) unsubHistory();
-    };
+    }
   }, []);
 
   const t = translations[lang];
@@ -156,15 +206,22 @@ function App() {
     </button>
   );
 
-  if (currentView === AppView.LANDING) {
-    return <LandingPage onStart={() => setCurrentView(AppView.DASHBOARD)} lang={lang} />;
-  }
-
   return (
-    <AuthContext.Provider value={{ user, loading, progress }}>
-      <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 transition-colors duration-300">
-        {/* Sidebar Navigation (Desktop) */}
-        <aside className="hidden md:flex flex-col w-64 bg-slate-50 border-r border-slate-200 p-6 fixed h-full z-10 transition-all duration-300">
+    <AuthContext.Provider value={{ user, loading, progress, refreshData }}>
+      <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-900 transition-colors duration-300 relative">
+        
+        {currentView === AppView.LANDING ? (
+          <LandingPage 
+            onStart={() => {
+              if (user) setCurrentView(AppView.DASHBOARD);
+              else setShowLoginModal(true);
+            }} 
+            lang={lang} 
+          />
+        ) : (
+          <>
+            {/* Sidebar Navigation (Desktop) */}
+            <aside className="hidden md:flex flex-col w-64 bg-slate-50 border-r border-slate-200 p-6 fixed h-full z-10 transition-all duration-300">
           <div className="flex items-center gap-2 mb-10 px-2 cursor-pointer" onClick={() => setCurrentView(AppView.LANDING)}>
             <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-indigo-200 shadow-md">
               <span className="text-white font-bold text-xl">D</span>
@@ -197,18 +254,16 @@ function App() {
             {user ? (
               <div className="space-y-3">
                 <div className="flex items-center gap-3 px-2">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt={user.displayName || ''} className="w-10 h-10 rounded-full shadow-sm" referrerPolicy="no-referrer" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-sm"></div>
-                  )}
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 shadow-sm flex items-center justify-center text-white font-bold">
+                    {user.displayName?.[0] || 'U'}
+                  </div>
                   <div>
                     <p className="text-sm font-semibold text-slate-800 truncate max-w-[120px]">{user.displayName || t.common.welcome}</p>
                     <p className="text-[10px] text-slate-500 uppercase tracking-wide">{t.common.plan}</p>
                   </div>
                 </div>
                 <button 
-                  onClick={logout}
+                  onClick={handleLogout}
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 >
                   <LogOut size={14} />
@@ -217,11 +272,11 @@ function App() {
               </div>
             ) : (
               <button 
-                onClick={loginWithGoogle}
+                onClick={() => setShowLoginModal(true)}
                 className="flex items-center gap-2 w-full px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md transition-all"
               >
                 <LogIn size={18} />
-                <span>Login with Google</span>
+                <span>Login</span>
               </button>
             )}
           </div>
@@ -257,22 +312,22 @@ function App() {
             
             <div className="pt-4 border-t border-slate-200">
               {user ? (
-                <button onClick={logout} className="flex items-center gap-2 text-red-600 font-medium">
+                <button onClick={handleLogout} className="flex items-center gap-2 text-red-600 font-medium">
                   <LogOut size={20} />
                   <span>Logout</span>
                 </button>
               ) : (
-                <button onClick={loginWithGoogle} className="flex items-center gap-2 text-indigo-600 font-medium">
+                <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 text-indigo-600 font-medium">
                   <LogIn size={20} />
-                  <span>Login with Google</span>
+                  <span>Login</span>
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* Main Content Area */}
-        <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-x-hidden">
+            {/* Main Content Area */}
+            <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-x-hidden min-h-screen">
           <div className="max-w-7xl mx-auto">
             {/* Server Health Warning */}
             {serverHealthy === false && (
@@ -315,19 +370,19 @@ function App() {
             )}
 
             {!user && currentView !== AppView.LANDING ? (
-              <div className="flex flex-col items-center justify-center h-[70vh] text-center">
-                <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-6">
-                  <LogIn size={40} className="text-indigo-600" />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">Please Login to Continue</h2>
-                <p className="text-slate-500 mb-8 max-w-md">Connect your Google account to save your progress, track your history, and access personalized training.</p>
-                <button 
-                  onClick={loginWithGoogle}
-                  className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:bg-indigo-700 transition-all"
-                >
-                  Login with Google
-                </button>
-              </div>
+                 <div className="flex flex-col items-center justify-center h-[70vh] text-center">
+                   <div className="w-20 h-20 bg-indigo-100 rounded-full flex items-center justify-center mb-6">
+                     <LogIn size={40} className="text-indigo-600" />
+                   </div>
+                   <h2 className="text-2xl font-bold text-slate-800 mb-2">欢迎回来</h2>
+                   <p className="text-slate-500 mb-8 max-w-md">请登录您的账户以同步训练数据和进阶分析进度。</p>
+                   <button 
+                     onClick={() => setShowLoginModal(true)}
+                     className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-semibold shadow-lg hover:bg-indigo-700 transition-all"
+                   >
+                     点击登录
+                   </button>
+                 </div>
             ) : (
               <>
                 {currentView === AppView.DASHBOARD && <Dashboard lang={lang} history={history} />}
@@ -340,6 +395,52 @@ function App() {
             )}
           </div>
         </main>
+      </>
+    )}
+
+        {/* Global Login Modal - Moved outside of view conditional for visibility everywhere */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 overflow-hidden relative">
+              {loading && (
+                <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-10">
+                   <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                   <p className="text-slate-600 font-medium">正在同步您的云端账号...</p>
+                </div>
+              )}
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold">账号登录</h3>
+                <button onClick={() => setShowLoginModal(false)} className="text-slate-400 hover:text-slate-600">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleDomesticLogin} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">电子邮箱</label>
+                  <input 
+                    type="email" 
+                    required 
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="yourname@domain.com"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    autoFocus
+                  />
+                </div>
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {loading ? '同步中...' : '确认登录'}
+                </button>
+                <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+                  您的学习进度和历史记录将与此邮箱永久绑定。
+                </p>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </AuthContext.Provider>
   );

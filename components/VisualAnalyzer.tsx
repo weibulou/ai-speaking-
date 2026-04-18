@@ -6,8 +6,6 @@ import { Language, VisualAnalysisResult, HistoryItem } from '../types';
 import { translations } from '../locales';
 import { analyzeBodyLanguage } from '../services/geminiService';
 import { useAuth } from '../App';
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, doc, updateDoc, getDoc, increment } from 'firebase/firestore';
 
 interface VisualAnalyzerProps {
   lang: Language;
@@ -22,7 +20,7 @@ declare global {
 }
 
 const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang }) => {
-  const { user } = useAuth();
+  const { user, refreshData } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const threeContainerRef = useRef<HTMLDivElement>(null);
@@ -431,22 +429,14 @@ const VisualAnalyzer: React.FC<VisualAnalyzerProps> = ({ lang }) => {
                     }
                   })
                 });
+
+                // Refresh dashboard
+                await refreshData();
             } catch (dbErr) {
                 console.error("Database proxy failed:", dbErr);
-                try {
-                    await addDoc(collection(db, historyPath), historyItem);
-                    const userRef = doc(db, 'users', user.uid);
-                    await updateDoc(userRef, {
-                      totalExercises: increment(1),
-                      updatedAt: new Date().toISOString()
-                    });
-                } catch (firestoreErr) {
-                    handleFirestoreError(firestoreErr, OperationType.WRITE, historyPath);
-                }
             }
-
         } catch (error) {
-            handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/history`);
+            console.error("Visual analysis failed", error);
         } finally {
             setIsAnalyzing(false);
         }
