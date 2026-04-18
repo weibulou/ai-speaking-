@@ -16,6 +16,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Environment-specific detection
+const isVercel = process.env.VERCEL === '1' || !!process.env.NOW_REGION || !!process.env.VERCEL_URL;
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -30,7 +33,7 @@ let db: any = null;
 const getDb = () => {
     if (db) return db;
     
-    console.log("Lazy initializing Firebase Admin...");
+    console.log(`[Firebase] Lazy initializing (Environment: ${isVercel ? 'Vercel' : 'Standard'})`);
     try {
         if (getApps().length > 0) {
             db = getFirestore(getApp());
@@ -38,45 +41,62 @@ const getDb = () => {
         }
 
         let adminApp;
-        const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+        let serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
         const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
         
         if (serviceAccountVar) {
-            console.log("Firebase: Using Service Account from Env (Length: " + serviceAccountVar.length + ")");
-            const serviceAccount = JSON.parse(serviceAccountVar);
-            console.log("Firebase: Extracted Project ID:", serviceAccount.project_id);
+            console.log(`[Firebase] Using Service Account from Env (Length: ${serviceAccountVar.length})`);
+            
+            // Clean up potentially malformed JSON (common in Vercel UI copy-paste)
+            let serviceAccount;
+            try {
+                serviceAccount = JSON.parse(serviceAccountVar);
+            } catch (err) {
+                console.warn("[Firebase] Standard JSON.parse failed, attempting cleanup...");
+                // Handle escaped newlines or manual quote wrapping
+                const cleaned = serviceAccountVar.trim()
+                    .replace(/\\n/g, '\n') // Fix literal \n
+                    .replace(/^['"]|['"]$/g, ''); // Fix extra wrapping quotes
+                serviceAccount = JSON.parse(cleaned);
+            }
+
+            console.log(`[Firebase] Extracted Project ID: ${serviceAccount.project_id}`);
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
                 projectId: serviceAccount.project_id
             });
         } else if (fs.existsSync(configPath)) {
             const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            console.log(`Firebase: Using Config File (${firebaseConfig.projectId})`);
+            console.log(`[Firebase] Using Config File (${firebaseConfig.projectId})`);
             adminApp = initializeApp({ 
                 projectId: process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId 
             });
         } else {
-            console.warn("Firebase: No configuration found, using default app");
+            console.warn("[Firebase] No configuration found, using default app");
             adminApp = initializeApp();
         }
 
         const firebaseConfig = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-        if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
-            db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+        const targetDbId = firebaseConfig.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID;
+        
+        if (targetDbId && targetDbId !== "(default)") {
+            console.log(`[Firebase] Using non-default database: ${targetDbId}`);
+            db = getFirestore(adminApp, targetDbId);
         } else {
             db = getFirestore(adminApp);
         }
-        console.log("Firebase: Admin initialized successfully");
+        
+        console.log("[Firebase] Admin initialized successfully");
         return db;
-    } catch (err) {
-        console.error("Firebase Initialization Critical Error:", err);
+    } catch (err: any) {
+        console.error("[Firebase] Initialization Critical Error:", err.message);
         // Fallback
         try {
             if (getApps().length === 0) initializeApp();
             db = getFirestore();
             return db;
         } catch (e) {
-            console.error("Firebase: Total failure", e);
+            console.error("[Firebase] Fatal failure during fallback", e);
             return null;
         }
     }
@@ -120,17 +140,41 @@ app.get("/api/config-check", (req, res) => {
   res.json({
     isConfigured: !!process.env.OPENAI_API_KEY,
     databaseInitialized: !!currentDb,
-    firebaseServiceAccount: serviceAccountFound ? "Found (Length: " + process.env.FIREBASE_SERVICE_ACCOUNT?.length + ")" : "Missing",
-    baseUrl: process.env.OPENAI_BASE_URL || "Not Set",
-    model: process.env.AI_MODEL || "Not Set",
-    env: {
-        VERCEL: process.env.VERCEL,
-        NODE_ENV: process.env.NODE_ENV,
-        PROJECT_ID: (currentDb && currentDb.projectId) || "None",
-        DEPLOYMENT: process.env.VERCEL ? "Vercel" : "Cloud Run/Local"
+    firebaseServiceAccount: serviceAccountFound ? `Found (${process.env.FIREBASE_SERVICE_ACCOUNT?.length} chars)` : "Missing",
+    baseUrl: process.env.OPENAI_BASE_URL || "Default",
+    model: process.env.AI_MODEL || "Default",
+    runtime: {
+        vercel: isVercel,
+        node: process.version,
+        env: process.env.NODE_ENV,
+        region: process.env.NOW_REGION || process.env.VERCEL_REGION || "Local"
     },
-    howToFix: !serviceAccountFound && process.env.VERCEL ? "Please add FIREBASE_SERVICE_ACCOUNT to Vercel environment variables as a JSON string." : undefined
+    howToFix: !serviceAccountFound && isVercel ? "Add FIREBASE_SERVICE_ACCOUNT to Vercel Env Vars." : undefined
   });
+});
+
+app.get("/api/test-api", async (req, res) => {
+  try {
+    const response = await openai.chat.completions.create({
+      model: process.env.AI_MODEL || "gpt-4o",
+      messages: [{ role: "user", content: "pong" }],
+      max_tokens: 5
+    });
+    res.json({ success: true, response: response.choices[0].message.content });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/test-db", async (req, res) => {
+  const currentDb = getDb();
+  if (!currentDb) return res.status(500).json({ success: false, error: "Database not initialized" });
+  try {
+    const snapshot = await currentDb.collection('users').limit(1).get();
+    res.json({ success: true, count: snapshot.size });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.get("/api/db/user/:uid", async (req, res) => {
@@ -420,8 +464,6 @@ app.post("/api/ai/analyze-visual", async (req, res) => {
 });
 
 // Environment-specific listener/middleware
-const isVercel = process.env.VERCEL === '1';
-
 if (!isVercel) {
   // Only use Vite middleware in local development
   if (process.env.NODE_ENV !== "production") {
@@ -440,7 +482,7 @@ if (!isVercel) {
     // Standard production server (e.g. Cloud Run)
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('/:any*', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
     app.listen(PORT, "0.0.0.0", () => {

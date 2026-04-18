@@ -24,15 +24,25 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
     setIsTestingApi(true);
     setApiTestResult(null);
     try {
-      const res = await fetch("/api/test-api");
-      const data = await res.json();
-      if (data.success) {
-        setApiTestResult({ success: true, message: "API 调用成功！模型响应正常。" });
+      const apiRes = await fetch("/api/test-api");
+      const apiData = await apiRes.json();
+      
+      const dbRes = await fetch("/api/test-db");
+      const dbData = await dbRes.json();
+      
+      let msg = "";
+      if (apiData.success && dbData.success) {
+        msg = "全部正常！AI 与数据库均已连通。";
       } else {
-        setApiTestResult({ success: false, message: `API 调用失败: ${data.error}` });
+        msg = `部分异常: AI(${apiData.success ? '正常' : apiData.error}), DB(${dbData.success ? '正常' : dbData.error})`;
       }
+      
+      setApiTestResult({ 
+        success: apiData.success && dbData.success, 
+        message: msg 
+      });
     } catch (err) {
-      setApiTestResult({ success: false, message: "无法连接到后端服务器进行测试。" });
+      setApiTestResult({ success: false, message: "无法连接到服务器进行检查。" });
     } finally {
       setIsTestingApi(false);
     }
