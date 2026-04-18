@@ -35,7 +35,7 @@ const domesticLogin = async (email: string) => {
     
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || `Server responded with ${res.status}`);
+      throw new Error(errorData.error || errorData.message || `Status: ${res.status}`);
     }
     
     const data = await res.json();

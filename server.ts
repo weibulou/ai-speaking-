@@ -25,22 +25,24 @@ app.use((req, res, next) => {
   next();
 });
 
-// Initialize Firebase Admin
-const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
 let db: any = null;
 
-const initializeFirebase = () => {
+const getDb = () => {
+    if (db) return db;
+    
+    console.log("Lazy initializing Firebase Admin...");
     try {
         if (getApps().length > 0) {
             db = getFirestore(getApp());
-            return;
+            return db;
         }
 
         let adminApp;
         const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+        const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
         
         if (serviceAccountVar) {
-            console.log("Initializing Firebase Admin using FIREBASE_SERVICE_ACCOUNT env var");
+            console.log("Firebase: Using Service Account from Env");
             const serviceAccount = JSON.parse(serviceAccountVar);
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
@@ -48,12 +50,12 @@ const initializeFirebase = () => {
             });
         } else if (fs.existsSync(configPath)) {
             const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            console.log(`Initializing Firebase Admin using firebase-applet-config.json for project: ${firebaseConfig.projectId}`);
+            console.log(`Firebase: Using Config File (${firebaseConfig.projectId})`);
             adminApp = initializeApp({ 
                 projectId: process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId 
             });
         } else {
-            console.warn("No Firebase config found, using default credentials");
+            console.warn("Firebase: No configuration found, using default app");
             adminApp = initializeApp();
         }
 
@@ -63,20 +65,21 @@ const initializeFirebase = () => {
         } else {
             db = getFirestore(adminApp);
         }
-        console.log("Firebase Admin initialized successfully");
+        console.log("Firebase: Admin initialized successfully");
+        return db;
     } catch (err) {
-        console.error("Firebase Admin initialization error:", err);
-        // Fallback to default
+        console.error("Firebase Initialization Critical Error:", err);
+        // Fallback
         try {
             if (getApps().length === 0) initializeApp();
             db = getFirestore();
+            return db;
         } catch (e) {
-            console.error("Firebase critical failure:", e);
+            console.error("Firebase: Total failure", e);
+            return null;
         }
     }
 };
-
-initializeFirebase();
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -111,24 +114,26 @@ app.get("/api/health", (req, res) => {
 });
 
 app.get("/api/config-check", (req, res) => {
+  const currentDb = getDb();
   res.json({
     isConfigured: !!process.env.OPENAI_API_KEY,
-    databaseInitialized: !!db,
+    databaseInitialized: !!currentDb,
     baseUrl: process.env.OPENAI_BASE_URL || "Not Set",
     model: process.env.AI_MODEL || "Not Set",
     env: {
         VERCEL: process.env.VERCEL,
         NODE_ENV: process.env.NODE_ENV,
-        PROJECT_ID: (db && db.projectId) || "None"
+        PROJECT_ID: (currentDb && currentDb.projectId) || "None"
     }
   });
 });
 
 app.get("/api/db/user/:uid", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Database not initialized" });
+  const currentDb = getDb();
+  if (!currentDb) return res.status(503).json({ error: "Database not initialized" });
   const { uid } = req.params;
   try {
-    const userDoc: any = await withTimeout(db.collection('users').doc(uid).get());
+    const userDoc: any = await withTimeout(currentDb.collection('users').doc(uid).get());
     if (!userDoc.exists) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -140,11 +145,12 @@ app.get("/api/db/user/:uid", async (req, res) => {
 });
 
 app.get("/api/db/history/:uid", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Database not initialized" });
+  const currentDb = getDb();
+  if (!currentDb) return res.status(503).json({ error: "Database not initialized" });
   const { uid } = req.params;
   try {
     const snapshot: any = await withTimeout(
-      db.collection('users').doc(uid).collection('history')
+      currentDb.collection('users').doc(uid).collection('history')
         .orderBy('date', 'desc')
         .limit(50)
         .get()
@@ -158,19 +164,20 @@ app.get("/api/db/history/:uid", async (req, res) => {
 });
 
 app.post("/api/auth/domestic-login", async (req, res) => {
-  const { email, displayName } = req.body;
-  if (!email) return res.status(400).json({ error: "Email required" });
-  
-  console.log(`>>> Login Request: ${email}`);
-  const uid = Buffer.from(email.toLowerCase().trim()).toString('base64').replace(/=/g, '');
-  
-  if (!db) {
-      console.warn("DB not initialized - sending guest session");
-      return res.json({ uid, email, displayName: displayName || email.split('@')[0], isOffline: true });
-  }
-
   try {
-    const userRef = db.collection('users').doc(uid);
+    const { email, displayName } = req.body || {};
+    if (!email) return res.status(400).json({ error: "Email required" });
+    
+    console.log(`>>> Login Request: ${email}`);
+    const uid = Buffer.from(email.toLowerCase().trim()).toString('base64').replace(/=/g, '');
+    
+    const currentDb = getDb();
+    if (!currentDb) {
+        console.warn("DB not initialized - sending guest session");
+        return res.json({ uid, email, displayName: displayName || email.split('@')[0], isOffline: true });
+    }
+
+    const userRef = currentDb.collection('users').doc(uid);
     const doc: any = await withTimeout(userRef.get());
     
     let userData: any;
@@ -202,23 +209,27 @@ app.post("/api/auth/domestic-login", async (req, res) => {
     
     // Auto-fallback for permissions or timeouts
     if (errMsg.includes('timeout') || errMsg.includes('permission') || errMsg.includes('insufficient')) {
+        const { email, displayName } = req.body || {};
+        const emailSafe = email || "unknown";
+        const uid = Buffer.from(emailSafe.toLowerCase().trim()).toString('base64').replace(/=/g, '');
         return res.json({ 
             uid, 
-            email, 
-            displayName: displayName || email.split('@')[0], 
+            email: emailSafe, 
+            displayName: displayName || emailSafe.split('@')[0], 
             isTemporary: true,
             warning: "Cloud database connection restricted, using temporary session."
         });
     }
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 });
 
 app.post("/api/db/save-history", async (req, res) => {
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
+  const currentDb = getDb();
+  if (!currentDb) return res.status(500).json({ error: "Database not initialized" });
   const { uid, historyItem } = req.body;
   try {
-    const historyRef = db.collection('users').doc(uid).collection('history');
+    const historyRef = currentDb.collection('users').doc(uid).collection('history');
     const docRef = await historyRef.add({
       ...historyItem,
       serverTimestamp: FieldValue.serverTimestamp()
@@ -231,10 +242,11 @@ app.post("/api/db/save-history", async (req, res) => {
 });
 
 app.post("/api/db/update-stats", async (req, res) => {
-  if (!db) return res.status(500).json({ error: "Database not initialized" });
+  const currentDb = getDb();
+  if (!currentDb) return res.status(500).json({ error: "Database not initialized" });
   const { uid, stats } = req.body;
   try {
-    const userRef = db.collection('users').doc(uid);
+    const userRef = currentDb.collection('users').doc(uid);
     const updateData: any = {};
     for (const [key, value] of Object.entries(stats)) {
       if (typeof value === 'object' && value !== null && (value as any)._type === 'increment') {
@@ -366,5 +378,15 @@ if (!isVercel) {
     });
   }
 }
+
+// Global error handler
+app.use((err: any, req: any, res: any, next: any) => {
+    console.error("UNCAUGHT_ERROR:", err);
+    res.status(500).json({ 
+        error: "INTERNAL_SERVER_ERROR", 
+        message: err.message,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
+});
 
 export default app;
