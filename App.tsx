@@ -129,11 +129,12 @@ function App() {
       console.error("Login component caught error:", err);
       setLoading(false);
       
-      let errorMsg = "登录请求失败，请检查网络并重试。";
+      let errorMsg = `登录请求失败: ${err.message || "未知网络错误"}`;
       if (err.message === 'DATABASE_TIMEOUT') {
         errorMsg = "数据库响应超时，已尝试为您建立临时会话，请刷新重试。";
-      } else if (err.message && err.message.includes('Login failed')) {
-        errorMsg = "登录失败，服务器拒绝了请求。";
+      } else if (err.message && err.message.includes('permission')) {
+        errorMsg = "云端数据库权限受限。正在切换到本地增强模式...";
+        // We could manually trigger a guest session here if we wanted
       }
       
       alert(errorMsg);

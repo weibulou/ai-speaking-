@@ -5,7 +5,7 @@ import { createServer as createViteServer } from "vite";
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import cors from "cors";
-import { initializeApp, getApps, getApp } from "firebase-admin/app";
+import { initializeApp, getApps, getApp, cert } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import fs from "fs";
 
@@ -17,44 +17,51 @@ dotenv.config();
 const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
 let db: any = null;
 
-if (fs.existsSync(configPath)) {
-  try {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    
-    // In many environments (like AI Studio), we should prioritize default credentials/project ID
-    // but allow the config file to provide the database ID if provisioned specially.
-    const app = getApps().length === 0 
-      ? initializeApp({ 
-          projectId: process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId 
-        })
-      : getApp();
-    
-    // Use the specific database ID from the config, but fallback to (default) if it fails
-    if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
-      db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-      console.log("Firebase Admin initialized for project:", firebaseConfig.projectId, "with database:", firebaseConfig.firestoreDatabaseId);
-    } else {
-      db = getFirestore(app);
-      console.log("Firebase Admin initialized for project:", firebaseConfig.projectId, "(default database)");
-    }
-  } catch (err) {
-    console.error("Firebase Admin initialization error, attempting fallback to default:", err);
+const initializeFirebase = () => {
     try {
-      const app = getApps().length === 0 ? initializeApp() : getApp();
-      db = getFirestore(app);
-    } catch (fallbackErr) {
-      console.error("Firebase Admin hard failure:", fallbackErr);
+        if (getApps().length > 0) return getFirestore(getApp());
+
+        let app;
+        const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
+        
+        if (serviceAccountVar) {
+            console.log("Initializing Firebase Admin using FIREBASE_SERVICE_ACCOUNT env var");
+            const serviceAccount = JSON.parse(serviceAccountVar);
+            app = initializeApp({
+                credential: cert(serviceAccount),
+                projectId: serviceAccount.project_id
+            });
+        } else if (fs.existsSync(configPath)) {
+            const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+            console.log("Initializing Firebase Admin using firebase-applet-config.json");
+            app = initializeApp({ 
+                projectId: process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId 
+            });
+        } else {
+            console.warn("No Firebase config found, using default initialization");
+            app = initializeApp();
+        }
+
+        const firebaseConfig = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
+        if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
+            db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+        } else {
+            db = getFirestore(app);
+        }
+        console.log("Firebase Admin initialized successfully");
+    } catch (err) {
+        console.error("Firebase Admin initialization error:", err);
+        // Last ditch fallback
+        try {
+            if (getApps().length === 0) initializeApp();
+            db = getFirestore();
+        } catch (e) {
+            console.error("Firebase critical failure:", e);
+        }
     }
-  }
-} else {
-  console.warn("firebase-applet-config.json not found. Attempting default Firebase initialization.");
-  try {
-    const app = getApps().length === 0 ? initializeApp() : getApp();
-    db = getFirestore(app);
-  } catch (err) {
-    console.error("Default Firebase initialization failed:", err);
-  }
-}
+};
+
+initializeFirebase();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -178,8 +185,9 @@ app.post("/api/auth/domestic-login", async (req, res) => {
   } catch (error: any) {
     console.error("!!! Domestic Login Error !!!", error);
     // Fallback: If DB is unreachable/timeouts, return a temporary user session so user isn't stuck
-    if (error.message === 'DATABASE_TIMEOUT' || error.message?.includes('permission')) {
-        console.warn("Returning emergency guest session due to DB issues");
+    const errMsg = (error.message || "").toLowerCase();
+    if (errMsg.includes('timeout') || errMsg.includes('permission') || errMsg.includes('insufficient')) {
+        console.warn("Returning emergency guest session due to DB issues:", error.message);
         return res.json({ 
             uid, 
             email, 
@@ -300,8 +308,14 @@ app.get("/api/test-api", async (req, res) => {
 app.get("/api/config-check", (req, res) => {
   res.json({
     isConfigured: !!process.env.OPENAI_API_KEY,
+    databaseInitialized: !!db,
     baseUrl: process.env.OPENAI_BASE_URL || "Not Set",
-    model: process.env.AI_MODEL || "Not Set"
+    model: process.env.AI_MODEL || "Not Set",
+    env: {
+        VERCEL: process.env.VERCEL,
+        NODE_ENV: process.env.NODE_ENV,
+        PROJECT_ID: (db && db.projectId) || "None"
+    }
   });
 });
 
