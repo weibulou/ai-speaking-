@@ -106,23 +106,23 @@ function App() {
       
       localStorage.setItem('domestic_uid', data.uid);
       setUser(data);
+      setProgress(data); // Pre-fill progress from login response
       setShowLoginModal(false);
+      setLoading(false); // Update UI immediately
       
       // If landing page, go to dashboard
       if (currentView === AppView.LANDING) {
-        console.log("Navigating to dashboard...");
         setCurrentView(AppView.DASHBOARD);
       }
 
-      // Show warning if database is slow but login succeeded (emergency session)
+      // Show warning if database is restricted
       if (data.warning) {
-        alert("⚠️ " + data.warning);
+        setTimeout(() => alert("ℹ️ " + data.warning), 100);
       }
 
-      // Background data refresh
+      // Background data refresh without blocking UI
       refreshData()
-        .catch(err => console.error("Initial data fetch background error:", err))
-        .finally(() => setLoading(false));
+        .catch(err => console.error("Background data refresh failed:", err));
       
     } catch (err: any) {
       console.error("Critical Login Error:", err);

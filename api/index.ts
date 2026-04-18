@@ -66,6 +66,17 @@ app.use((req, res, next) => {
 });
 
 let db: any = null;
+const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+let firebaseConfig: any = {};
+if (fs.existsSync(configPath)) {
+    try {
+        firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    } catch (e) {
+        console.error("Failed to parse firebase config", e);
+    }
+}
+const effectiveProjectId = process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId;
+const targetDbId = process.env.FIRESTORE_DATABASE_ID || firebaseConfig.firestoreDatabaseId;
 
 const getDb = () => {
     if (db) return db;
@@ -79,7 +90,6 @@ const getDb = () => {
 
         let adminApp;
         let serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
-        const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
         
         if (serviceAccountVar && serviceAccountVar.trim().length > 10) {
             console.log(`[Firebase] Using Service Account from Env (Length: ${serviceAccountVar.length})`);
@@ -91,7 +101,8 @@ const getDb = () => {
                 console.warn("[Firebase] Initial JSON.parse failed, attempting cleanup...");
                 const cleaned = serviceAccountVar.trim()
                     .replace(/\\n/g, '\n')
-                    .replace(/^['"]|['"]$/g, '');
+                    .replace(/^['"]|['"]$/g, '')
+                    .replace(/\\\\/g, '\\');
                 try {
                     serviceAccount = JSON.parse(cleaned);
                 } catch (err2) {
@@ -100,25 +111,21 @@ const getDb = () => {
                 }
             }
 
-            console.log(`[Firebase] Extracted Project ID: ${serviceAccount.project_id}`);
+            console.log(`[Firebase] Extracted Project ID: ${serviceAccount.project_id || effectiveProjectId}`);
             adminApp = initializeApp({
                 credential: cert(serviceAccount),
-                projectId: serviceAccount.project_id
+                projectId: serviceAccount.project_id || effectiveProjectId
             });
-        } else if (fs.existsSync(configPath)) {
-            const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            console.log(`[Firebase] Using Config File (${firebaseConfig.projectId})`);
+        } else if (effectiveProjectId) {
+            console.log(`[Firebase] Using Default/Config Project ID: ${effectiveProjectId}`);
             adminApp = initializeApp({ 
-                projectId: process.env.GOOGLE_CLOUD_PROJECT || firebaseConfig.projectId 
+                projectId: effectiveProjectId 
             });
         } else {
             console.warn("[Firebase] No configuration found, using default app");
             adminApp = initializeApp();
         }
 
-        const firebaseConfig = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-        const targetDbId = firebaseConfig.firestoreDatabaseId || process.env.FIRESTORE_DATABASE_ID;
-        
         if (targetDbId && targetDbId !== "(default)") {
             console.log(`[Firebase] Using non-default database: ${targetDbId}`);
             db = getFirestore(adminApp, targetDbId);
@@ -185,8 +192,8 @@ app.get("/api/config-check", (req, res) => {
     databaseInitialized: !!currentDb,
     firebaseServiceAccount: serviceAccountFound ? `Found (${process.env.FIREBASE_SERVICE_ACCOUNT?.length} chars)` : "Missing",
     hasLocalConfig,
-    projectId: process.env.GOOGLE_CLOUD_PROJECT || "Not set",
-    databaseId: process.env.FIRESTORE_DATABASE_ID || "Not set",
+    projectId: effectiveProjectId || "Not set",
+    databaseId: targetDbId || "(default)",
     baseUrl: process.env.OPENAI_BASE_URL || "Default",
     model: process.env.AI_MODEL || "Default",
     runtime: {
