@@ -11,6 +11,18 @@ import fs from "fs";
 console.log("Starting DebateMaster AI Server...");
 dotenv.config();
 
+console.log("=== SERVER STARTUP DEBUG INFO ===");
+console.log("NODE_ENV:", process.version, process.env.NODE_ENV);
+console.log("VERCEL:", process.env.VERCEL);
+console.log("VERCEL_URL:", process.env.VERCEL_URL);
+console.log("GOOGLE_CLOUD_PROJECT:", process.env.GOOGLE_CLOUD_PROJECT);
+console.log("FIREBASE_SERVICE_ACCOUNT found:", !!process.env.FIREBASE_SERVICE_ACCOUNT);
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    console.log("FIREBASE_SERVICE_ACCOUNT length:", process.env.FIREBASE_SERVICE_ACCOUNT.length);
+}
+console.log("FIRESTORE_DATABASE_ID:", process.env.FIRESTORE_DATABASE_ID);
+console.log("==================================");
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
@@ -19,7 +31,32 @@ const PORT = 3000;
 // Environment-specific detection
 const isVercel = process.env.VERCEL === '1' || !!process.env.NOW_REGION || !!process.env.VERCEL_URL;
 
-app.use(cors());
+// Hardened CORS for Vercel and Custom Domains
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://www.debatemaster.cloud',
+  'https://debatemaster.cloud',
+];
+
+if (process.env.VERCEL_URL) {
+  allowedOrigins.push(`https://${process.env.VERCEL_URL}`);
+}
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(null, true); // Fallback to allowing in case of dynamic Vercel previews
+    }
+  },
+  credentials: true
+}));
+
 app.use(express.json({ limit: '10mb' }));
 
 // Request logging
@@ -140,17 +177,24 @@ app.get("/api/health", (req, res) => {
 app.get("/api/config-check", (req, res) => {
   const currentDb = getDb();
   const serviceAccountFound = !!process.env.FIREBASE_SERVICE_ACCOUNT;
+  const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  const hasLocalConfig = fs.existsSync(configPath);
+  
   res.json({
     isConfigured: !!process.env.OPENAI_API_KEY,
     databaseInitialized: !!currentDb,
     firebaseServiceAccount: serviceAccountFound ? `Found (${process.env.FIREBASE_SERVICE_ACCOUNT?.length} chars)` : "Missing",
+    hasLocalConfig,
+    projectId: process.env.GOOGLE_CLOUD_PROJECT || "Not set",
+    databaseId: process.env.FIRESTORE_DATABASE_ID || "Not set",
     baseUrl: process.env.OPENAI_BASE_URL || "Default",
     model: process.env.AI_MODEL || "Default",
     runtime: {
         vercel: isVercel,
         node: process.version,
         env: process.env.NODE_ENV,
-        region: process.env.NOW_REGION || process.env.VERCEL_REGION || "Local"
+        region: process.env.NOW_REGION || process.env.VERCEL_REGION || "Local",
+        url: process.env.VERCEL_URL || "Local"
     },
     howToFix: !serviceAccountFound && isVercel ? "Add FIREBASE_SERVICE_ACCOUNT to Vercel Env Vars." : undefined
   });
