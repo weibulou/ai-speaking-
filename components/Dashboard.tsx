@@ -221,14 +221,14 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Radar Chart for Skills */}
-        <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100">
+      {/* Radar Chart for Skills */}
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">{t.competency}</h3>
-          <div className="h-[300px] w-full">
+          <div className="h-[280px] md:h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart cx="50%" cy="50%" outerRadius="75%" data={metrics.radarData}>
+              <RadarChart cx="50%" cy="50%" outerRadius="65%" data={metrics.radarData}>
                 <PolarGrid />
-                <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 12 }} />
+                <PolarAngleAxis dataKey="subject" tick={{ fill: '#64748b', fontSize: 10 }} />
                 <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} />
                 <Radar
                   name="Current Level"
@@ -244,17 +244,17 @@ const Dashboard: React.FC<DashboardProps> = ({ lang, history }) => {
         </div>
 
         {/* Line Chart for Progress */}
-        <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100">
+        <div className="bg-white p-4 md:p-6 rounded-2xl shadow-md border border-slate-100">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">{t.progress}</h3>
-          <div className="h-[300px] w-full">
+          <div className="h-[250px] md:h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={metrics.progressData}
-                margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+                margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} domain={[0, 100]} />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={10} />
+                <YAxis stroke="#64748b" fontSize={10} domain={[0, 100]} />
                 <Tooltip 
                     contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />

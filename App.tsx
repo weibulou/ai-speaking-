@@ -399,7 +399,7 @@ function App() {
         </aside>
 
         {/* Mobile Header */}
-        <div className="md:hidden bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+        <div className="md:hidden bg-white/95 backdrop-blur-lg border-b border-slate-200 p-4 flex justify-between items-center sticky top-0 z-[60] shadow-sm">
           <div className="flex items-center gap-2" onClick={() => setCurrentView(AppView.LANDING)}>
             <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
               <span className="text-white font-bold text-lg italic">D</span>
@@ -418,7 +418,7 @@ function App() {
 
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
-          <div className="md:hidden fixed inset-0 bg-slate-50/95 backdrop-blur-xl z-10 pt-20 px-6 space-y-3 animate-in fade-in slide-in-from-top-4 duration-300 overflow-y-auto">
+          <div className="md:hidden fixed inset-0 bg-slate-50/98 backdrop-blur-2xl z-[50] pt-20 px-6 space-y-3 animate-in fade-in slide-in-from-top-4 duration-300 overflow-y-auto">
             <div className="grid grid-cols-1 gap-2 pt-4">
                 <NavItem view={AppView.DASHBOARD} icon={LayoutDashboard} label={t.nav.dashboard} />
                 <NavItem view={AppView.SPEECH_ANALYSIS} icon={Mic} label={t.nav.speech} />
@@ -466,7 +466,7 @@ function App() {
         )}
 
             {/* Main Content Area */}
-            <main className="flex-1 md:ml-64 p-3 md:p-8 overflow-x-hidden min-h-screen">
+            <main className="flex-1 md:ml-64 p-4 md:p-8 overflow-x-hidden min-h-screen relative z-10">
           <div className="max-w-7xl mx-auto">
             {/* Server Health Warning */}
             {serverHealthy === false && (
